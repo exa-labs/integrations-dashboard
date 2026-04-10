@@ -150,7 +150,10 @@ export async function updateIntegrationApproval(
   if (!db) return false;
 
   const update: Record<string, unknown> = { approval_status: status };
-  if (approvedBy) {
+  if (status === "none") {
+    update.approved_by = null;
+    update.approved_at = null;
+  } else if (approvedBy) {
     update.approved_by = approvedBy;
     update.approved_at = admin.firestore.FieldValue.serverTimestamp();
   }
