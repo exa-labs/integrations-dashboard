@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
+import Link from "next/link";
 import {
   useReactTable,
   getCoreRowModel,
@@ -80,17 +81,20 @@ export function ManagerTab({ integrations, sdkState }: Props) {
   useEffect(() => {
     if (!hasRunningAudits) {
       if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
+        clearTimeout(pollTimerRef.current);
         pollTimerRef.current = null;
       }
       return;
     }
 
-    pollTimerRef.current = setInterval(async () => {
+    let cancelled = false;
+
+    const poll = async () => {
       const running = localIntegrationsRef.current.filter(
         (i) => i.audit_status === "running",
       );
       for (const integration of running) {
+        if (cancelled) return;
         const result = await checkAuditStatus(integration._id);
         if (
           result.success &&
@@ -104,11 +108,18 @@ export function ManagerTab({ integrations, sdkState }: Props) {
           }
         }
       }
-    }, 30_000);
+      if (!cancelled) {
+        pollTimerRef.current = setTimeout(poll, 30_000);
+      }
+    };
+
+    // Start first poll after 30s delay
+    pollTimerRef.current = setTimeout(poll, 30_000);
 
     return () => {
+      cancelled = true;
       if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
+        clearTimeout(pollTimerRef.current);
         pollTimerRef.current = null;
       }
     };
@@ -175,9 +186,13 @@ export function ManagerTab({ integrations, sdkState }: Props) {
         header: "Integration",
         cell: (info) => (
           <div>
-            <span className="font-medium text-gray-900">
+            <Link
+              href={`/integrations/${info.row.original._id}`}
+              className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
               {info.getValue()}
-            </span>
+            </Link>
             <span className="ml-2 text-xs text-gray-400">
               {info.row.original.type}
             </span>
@@ -207,7 +222,8 @@ export function ManagerTab({ integrations, sdkState }: Props) {
         cell: (info) => {
           const current = info.getValue();
           const latest = info.row.original.latest_sdk_version;
-          if (!current) return <span className="text-gray-400">—</span>;
+          if (!current)
+            return <span className="text-xs text-gray-400 italic">No SDK dependency</span>;
           return (
             <span className="font-mono text-sm">
               {current}

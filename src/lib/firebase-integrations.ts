@@ -6,6 +6,7 @@ import type {
   IntegrationType,
   IntegrationUpdateContext,
   AuditStatus,
+  AuditHistoryEntry,
   ScoutRepo,
   ActivityLogEntry,
   ActivityAction,
@@ -320,6 +321,75 @@ export async function getIntegrationByAuditSessionId(
 
   if (snap.empty) return null;
   return docToIntegration(snap.docs[0]);
+}
+
+// ─── Audit History (subcollection) ───────────────────────────────
+
+export async function addAuditHistoryEntry(
+  integrationId: string,
+  entry: Omit<AuditHistoryEntry, "_id">,
+): Promise<string> {
+  const db = getFirestore();
+  if (!db) throw new Error("Firestore not initialized");
+
+  const ref = await db
+    .collection(INTEGRATIONS)
+    .doc(integrationId)
+    .collection("audit_history")
+    .add({
+      ...entry,
+      started_at: entry.started_at ?? null,
+      completed_at: entry.completed_at
+        ? entry.completed_at
+        : admin.firestore.FieldValue.serverTimestamp(),
+    });
+  return ref.id;
+}
+
+export async function fetchAuditHistory(
+  integrationId: string,
+): Promise<AuditHistoryEntry[]> {
+  const db = getFirestore();
+  if (!db) return [];
+
+  const snap = await db
+    .collection(INTEGRATIONS)
+    .doc(integrationId)
+    .collection("audit_history")
+    .orderBy("completed_at", "desc")
+    .limit(50)
+    .get();
+
+  return snap.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      _id: doc.id,
+      session_id: d.session_id ?? "",
+      session_url: d.session_url ?? "",
+      started_at: d.started_at?.toDate?.() ?? null,
+      completed_at: d.completed_at?.toDate?.() ?? null,
+      status: d.status ?? "completed",
+      result: d.result ?? null,
+      health_at_completion: d.health_at_completion ?? null,
+    };
+  });
+}
+
+export async function fetchActivityForIntegration(
+  integrationId: string,
+  limit = 50,
+): Promise<ActivityLogEntry[]> {
+  const db = getFirestore();
+  if (!db) return [];
+
+  const snap = await db
+    .collection(ACTIVITY_LOG)
+    .where("target_id", "==", integrationId)
+    .orderBy("created_at", "desc")
+    .limit(limit)
+    .get();
+
+  return snap.docs.map(docToActivityLogEntry);
 }
 
 // ─── Scout Repos ─────────────────────────────────────────────────

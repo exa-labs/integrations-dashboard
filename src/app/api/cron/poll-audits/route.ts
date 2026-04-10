@@ -4,6 +4,7 @@ import {
   updateIntegrationAuditStatus,
   updateIntegrationHealth,
   addActivityLogEntry,
+  addAuditHistoryEntry,
 } from "@/lib/firebase-integrations";
 import type { IntegrationHealth } from "@/types/integrations";
 
@@ -90,9 +91,23 @@ export async function GET(req: NextRequest) {
         const isFailed =
           session.status_enum === "failed" || session.status === "failed";
 
+        // Skip already-completed/failed audits
+        if (integration.audit_status === "completed" || integration.audit_status === "failed") {
+          continue;
+        }
+
         if (isFailed) {
           await updateIntegrationAuditStatus(integration._id, "failed", {
             result: JSON.stringify({ summary: "Audit session failed" }),
+          });
+          await addAuditHistoryEntry(integration._id, {
+            session_id: integration.audit_session_id ?? "",
+            session_url: integration.audit_session_url ?? "",
+            started_at: integration.audit_started_at ?? null,
+            completed_at: new Date(),
+            status: "failed",
+            result: JSON.stringify({ summary: "Audit session failed" }),
+            health_at_completion: integration.health,
           });
           await addActivityLogEntry({
             actor: "cron/poll-audits",
@@ -128,10 +143,22 @@ export async function GET(req: NextRequest) {
             );
           }
 
+          const resultJson = auditResult
+            ? JSON.stringify(auditResult)
+            : JSON.stringify({ summary: "Session completed without structured output" });
+
           await updateIntegrationAuditStatus(integration._id, "completed", {
-            result: auditResult
-              ? JSON.stringify(auditResult)
-              : JSON.stringify({ summary: "Session completed without structured output" }),
+            result: resultJson,
+          });
+
+          await addAuditHistoryEntry(integration._id, {
+            session_id: integration.audit_session_id ?? "",
+            session_url: integration.audit_session_url ?? "",
+            started_at: integration.audit_started_at ?? null,
+            completed_at: new Date(),
+            status: "completed",
+            result: resultJson,
+            health_at_completion: auditResult?.health ?? integration.health,
           });
 
           await addActivityLogEntry({

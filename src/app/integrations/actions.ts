@@ -15,6 +15,9 @@ import {
   addActivityLogEntry,
   getSdkState,
   updateIntegrationAuditStatus,
+  addAuditHistoryEntry,
+  fetchAuditHistory,
+  fetchActivityForIntegration,
 } from "@/lib/firebase-integrations";
 import type {
   Integration,
@@ -22,6 +25,7 @@ import type {
   IntegrationUpdateContext,
   ScoutRepo,
   ActivityLogEntry,
+  AuditHistoryEntry,
   ManagerSummary,
   ScoutSummary,
   SdkState,
@@ -451,6 +455,15 @@ export async function checkAuditStatus(
       };
     }
 
+    // Don't re-process already-completed/failed audits
+    if (integration.audit_status === "completed" || integration.audit_status === "failed") {
+      return {
+        success: true,
+        audit_status: integration.audit_status,
+        session_url: integration.audit_session_url ?? undefined,
+      };
+    }
+
     const devinResponse = await fetch(
       `https://api.devin.ai/v1/session/${integration.audit_session_id}`,
       {
@@ -492,6 +505,15 @@ export async function checkAuditStatus(
       await updateIntegrationAuditStatus(integrationId, "failed", {
         result: JSON.stringify({ summary: "Audit session failed" }),
       });
+      await addAuditHistoryEntry(integrationId, {
+        session_id: integration.audit_session_id ?? "",
+        session_url: integration.audit_session_url ?? "",
+        started_at: integration.audit_started_at ?? null,
+        completed_at: new Date(),
+        status: "failed",
+        result: JSON.stringify({ summary: "Audit session failed" }),
+        health_at_completion: integration.health,
+      });
       await addActivityLogEntry({
         actor: "system",
         action: "audit_completed",
@@ -525,10 +547,22 @@ export async function checkAuditStatus(
         );
       }
 
+      const resultJson = auditResult
+        ? JSON.stringify(auditResult)
+        : JSON.stringify({ summary: "Session completed without structured output" });
+
       await updateIntegrationAuditStatus(integrationId, "completed", {
-        result: auditResult
-          ? JSON.stringify(auditResult)
-          : JSON.stringify({ summary: "Session completed without structured output" }),
+        result: resultJson,
+      });
+
+      await addAuditHistoryEntry(integrationId, {
+        session_id: integration.audit_session_id ?? "",
+        session_url: integration.audit_session_url ?? "",
+        started_at: integration.audit_started_at ?? null,
+        completed_at: new Date(),
+        status: "completed",
+        result: resultJson,
+        health_at_completion: auditResult?.health ?? integration.health,
       });
 
       await addActivityLogEntry({
@@ -589,4 +623,36 @@ export async function fetchFilteredIntegrations(
   healthFilter?: IntegrationHealth,
 ): Promise<Integration[]> {
   return fetchIntegrations(healthFilter);
+}
+
+// ─── Detail page actions ─────────────────────────────────────────
+
+export async function getIntegrationDetail(integrationId: string): Promise<{
+  integration: Integration | null;
+  auditHistory: AuditHistoryEntry[];
+  activity: ActivityLogEntry[];
+}> {
+  const integration = await getIntegration(integrationId);
+  if (!integration) {
+    return { integration: null, auditHistory: [], activity: [] };
+  }
+
+  const [auditHistory, activity] = await Promise.all([
+    fetchAuditHistory(integrationId),
+    fetchActivityForIntegration(integrationId),
+  ]);
+
+  return { integration, auditHistory, activity };
+}
+
+export async function fetchAuditHistoryAction(
+  integrationId: string,
+): Promise<AuditHistoryEntry[]> {
+  return fetchAuditHistory(integrationId);
+}
+
+export async function fetchIntegrationActivityAction(
+  integrationId: string,
+): Promise<ActivityLogEntry[]> {
+  return fetchActivityForIntegration(integrationId);
 }

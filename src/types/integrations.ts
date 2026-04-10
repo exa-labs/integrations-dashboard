@@ -90,6 +90,17 @@ export interface ActivityLogEntry {
   created_at: Date;
 }
 
+export interface AuditHistoryEntry {
+  _id: string;
+  session_id: string;
+  session_url: string;
+  started_at: Date | null;
+  completed_at: Date | null;
+  status: AuditStatus;
+  result: string | null;
+  health_at_completion: IntegrationHealth | null;
+}
+
 export interface SdkState {
   exa_py_version: string;
   exa_js_version: string;
