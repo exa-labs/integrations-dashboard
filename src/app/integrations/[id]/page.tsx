@@ -6,7 +6,6 @@ import {
 import { IntegrationDetailPage } from "./IntegrationDetailPage";
 import { notFound } from "next/navigation";
 import type {
-  Integration,
   AuditHistoryEntry,
   ActivityLogEntry,
 } from "@/types/integrations";
@@ -17,19 +16,6 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
-// Serialize Date objects to ISO strings for safe server→client transfer
-function serializeIntegration(i: Integration): Integration {
-  return JSON.parse(JSON.stringify(i)) as Integration;
-}
-
-function serializeAuditHistory(entries: AuditHistoryEntry[]): AuditHistoryEntry[] {
-  return JSON.parse(JSON.stringify(entries)) as AuditHistoryEntry[];
-}
-
-function serializeActivity(entries: ActivityLogEntry[]): ActivityLogEntry[] {
-  return JSON.parse(JSON.stringify(entries)) as ActivityLogEntry[];
-}
-
 export default async function IntegrationPage({ params }: Props) {
   const { id } = await params;
   const integration = await getIntegration(id);
@@ -38,16 +24,24 @@ export default async function IntegrationPage({ params }: Props) {
     notFound();
   }
 
-  const [auditHistory, activity] = await Promise.all([
-    fetchAuditHistory(id),
-    fetchActivityForIntegration(id),
-  ]);
+  // These queries may fail if Firestore composite indexes haven't been created yet.
+  // Catch errors gracefully so the page still loads.
+  let auditHistory: AuditHistoryEntry[] = [];
+  let activity: ActivityLogEntry[] = [];
+  try {
+    [auditHistory, activity] = await Promise.all([
+      fetchAuditHistory(id).catch(() => [] as AuditHistoryEntry[]),
+      fetchActivityForIntegration(id).catch(() => [] as ActivityLogEntry[]),
+    ]);
+  } catch {
+    // Indexes not yet created — page still loads with empty tabs
+  }
 
   return (
     <IntegrationDetailPage
-      integration={serializeIntegration(integration)}
-      auditHistory={serializeAuditHistory(auditHistory)}
-      activity={serializeActivity(activity)}
+      integration={integration}
+      auditHistory={auditHistory}
+      activity={activity}
     />
   );
 }

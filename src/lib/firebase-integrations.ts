@@ -332,17 +332,30 @@ export async function addAuditHistoryEntry(
   const db = getFirestore();
   if (!db) throw new Error("Firestore not initialized");
 
-  const ref = await db
+  // Use session_id as document ID for idempotency — prevents duplicate entries
+  // when both cron poll-audits and client-side checkAuditStatus race to complete
+  // the same audit simultaneously.
+  const docId = entry.session_id || undefined;
+  const colRef = db
     .collection(INTEGRATIONS)
     .doc(integrationId)
-    .collection("audit_history")
-    .add({
-      ...entry,
-      started_at: entry.started_at ?? null,
-      completed_at: entry.completed_at
-        ? entry.completed_at
-        : admin.firestore.FieldValue.serverTimestamp(),
-    });
+    .collection("audit_history");
+
+  const data = {
+    ...entry,
+    started_at: entry.started_at ?? null,
+    completed_at: entry.completed_at
+      ? entry.completed_at
+      : admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (docId) {
+    // set() with merge is idempotent — second writer just overwrites with same data
+    await colRef.doc(docId).set(data, { merge: true });
+    return docId;
+  }
+
+  const ref = await colRef.add(data);
   return ref.id;
 }
 
