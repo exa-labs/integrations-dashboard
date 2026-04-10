@@ -64,6 +64,8 @@ export function ManagerTab({ integrations, sdkState }: Props) {
   const [pollLoading, setPollLoading] = useState<string | null>(null);
   const [localIntegrations, setLocalIntegrations] = useState(integrations);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const localIntegrationsRef = useRef(localIntegrations);
+  localIntegrationsRef.current = localIntegrations;
 
   useEffect(() => {
     setLocalIntegrations(integrations);
@@ -85,7 +87,7 @@ export function ManagerTab({ integrations, sdkState }: Props) {
     }
 
     pollTimerRef.current = setInterval(async () => {
-      const running = localIntegrations.filter(
+      const running = localIntegrationsRef.current.filter(
         (i) => i.audit_status === "running",
       );
       for (const integration of running) {
@@ -110,7 +112,7 @@ export function ManagerTab({ integrations, sdkState }: Props) {
         pollTimerRef.current = null;
       }
     };
-  }, [hasRunningAudits, localIntegrations]);
+  }, [hasRunningAudits]);
 
   const handleTriggerAudit = useCallback(async (integration: Integration) => {
     if (auditLoading) return;

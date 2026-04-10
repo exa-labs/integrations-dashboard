@@ -75,7 +75,8 @@ export async function GET(req: NextRequest) {
       if (!integration.current_sdk_version) continue;
 
       const isPython = integration.type === "python";
-      const latestVersion = isPython ? exaPyVersion : exaJsVersion;
+      const isTypescript = integration.type === "typescript";
+      const latestVersion = isPython ? exaPyVersion : isTypescript ? exaJsVersion : null;
 
       if (!latestVersion) continue;
       if (integration.current_sdk_version === latestVersion) continue;
