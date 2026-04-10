@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sdk-check",
+      "schedule": "0 8 * * 1,3,5"
+    },
+    {
+      "path": "/api/cron/poll-audits",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

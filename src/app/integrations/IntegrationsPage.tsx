@@ -9,7 +9,6 @@ import type {
   Integration,
   ScoutRepo,
   ActivityLogEntry,
-  ManagerSummary,
   ScoutSummary,
   SdkState,
 } from "@/types/integrations";
@@ -20,7 +19,6 @@ type TabId = "manager" | "scout" | "activity";
 interface Props {
   initialManager: {
     integrations: Integration[];
-    summary: ManagerSummary;
     sdkState: SdkState | null;
   };
   initialScout: {
@@ -94,7 +92,6 @@ function IntegrationsPageInner({
       {activeTab === "manager" && (
         <ManagerTab
           integrations={initialManager.integrations}
-          summary={initialManager.summary}
           sdkState={initialManager.sdkState}
         />
       )}

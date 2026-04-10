@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -23,13 +23,11 @@ import type {
   Integration,
   IntegrationHealth,
   AuditStatus,
-  ManagerSummary,
   SdkState,
 } from "@/types/integrations";
 
 interface Props {
   integrations: Integration[];
-  summary: ManagerSummary;
   sdkState: SdkState | null;
 }
 
@@ -48,7 +46,7 @@ const auditStatusLabels: Record<AuditStatus, string> = {
 
 const columnHelper = createColumnHelper<Integration>();
 
-export function ManagerTab({ integrations, summary, sdkState }: Props) {
+export function ManagerTab({ integrations, sdkState }: Props) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: "health", desc: false },
   ]);
@@ -65,10 +63,54 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
   const [auditLoading, setAuditLoading] = useState<string | null>(null);
   const [pollLoading, setPollLoading] = useState<string | null>(null);
   const [localIntegrations, setLocalIntegrations] = useState(integrations);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setLocalIntegrations(integrations);
   }, [integrations]);
+
+  // Auto-poll running audits every 30s
+  const hasRunningAudits = useMemo(
+    () => localIntegrations.some((i) => i.audit_status === "running"),
+    [localIntegrations],
+  );
+
+  useEffect(() => {
+    if (!hasRunningAudits) {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      return;
+    }
+
+    pollTimerRef.current = setInterval(async () => {
+      const running = localIntegrations.filter(
+        (i) => i.audit_status === "running",
+      );
+      for (const integration of running) {
+        const result = await checkAuditStatus(integration._id);
+        if (
+          result.success &&
+          (result.audit_status === "completed" || result.audit_status === "failed")
+        ) {
+          const updated = await getIntegrationData(integration._id);
+          if (updated) {
+            setLocalIntegrations((prev) =>
+              prev.map((i) => (i._id === integration._id ? updated : i)),
+            );
+          }
+        }
+      }
+    }, 30_000);
+
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, [hasRunningAudits, localIntegrations]);
 
   const handleTriggerAudit = useCallback(async (integration: Integration) => {
     if (auditLoading) return;
@@ -340,14 +382,22 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Summary cards */}
+      {/* Summary cards — recomputed from local state */}
       <div className="grid grid-cols-4 gap-4">
-        <SummaryCard label="Total" value={summary.total} />
-        <SummaryCard label="Outdated" value={summary.outdated} color="red" />
-        <SummaryCard label="Healthy" value={summary.healthy} color="green" />
+        <SummaryCard label="Total" value={localIntegrations.length} />
+        <SummaryCard
+          label="Outdated"
+          value={localIntegrations.filter((i) => i.health === "outdated").length}
+          color="red"
+        />
+        <SummaryCard
+          label="Healthy"
+          value={localIntegrations.filter((i) => i.health === "healthy").length}
+          color="green"
+        />
         <SummaryCard
           label="Needs Audit"
-          value={summary.needs_audit}
+          value={localIntegrations.filter((i) => i.health === "needs_audit").length}
           color="yellow"
         />
       </div>
