@@ -5,9 +5,9 @@ let firebaseApp: admin.app.App | null = null;
 export function getFirebaseApp(): admin.app.App | null {
   if (firebaseApp) return firebaseApp;
 
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_EXABOT;
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!serviceAccountJson) {
-    console.warn("[Firebase] FIREBASE_SERVICE_ACCOUNT_EXABOT not configured");
+    console.warn("[Firebase] FIREBASE_SERVICE_ACCOUNT not configured");
     return null;
   }
 
