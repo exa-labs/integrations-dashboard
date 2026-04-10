@@ -12,6 +12,8 @@ export type OutreachStatus =
   | "responded"
   | "declined"
   | "integrated";
+export type AuditStatus = "none" | "running" | "completed" | "failed";
+
 export type ActivityAction =
   | "mark_outdated"
   | "mark_fixed"
@@ -21,6 +23,8 @@ export type ActivityAction =
   | "outreach_responded"
   | "status_change"
   | "update_approved"
+  | "audit_triggered"
+  | "audit_completed"
   | "note";
 
 export interface IntegrationUpdateContext {
@@ -49,6 +53,11 @@ export interface Integration {
   approval_status: "none" | "pending_approval" | "approved" | "in_progress";
   approved_by: string | null;
   approved_at: Date | null;
+  audit_session_id: string | null;
+  audit_session_url: string | null;
+  audit_status: AuditStatus;
+  audit_started_at: Date | null;
+  audit_result: string | null;
 }
 
 export interface ScoutRepo {

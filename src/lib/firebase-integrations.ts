@@ -5,6 +5,7 @@ import type {
   IntegrationHealth,
   IntegrationType,
   IntegrationUpdateContext,
+  AuditStatus,
   ScoutRepo,
   ActivityLogEntry,
   ActivityAction,
@@ -47,6 +48,11 @@ function docToIntegration(
     approval_status: d.approval_status ?? "none",
     approved_by: d.approved_by ?? null,
     approved_at: d.approved_at?.toDate?.() ?? null,
+    audit_session_id: d.audit_session_id ?? null,
+    audit_session_url: d.audit_session_url ?? null,
+    audit_status: d.audit_status ?? "none",
+    audit_started_at: d.audit_started_at?.toDate?.() ?? null,
+    audit_result: d.audit_result ?? null,
   };
 }
 
@@ -214,22 +220,30 @@ export async function addIntegration(data: {
   if (!db) return false;
 
   const ref = db.collection(INTEGRATIONS).doc(data.slug);
-  const existing = await ref.get();
-  if (existing.exists) {
-    throw new Error(`Integration with slug "${data.slug}" already exists`);
-  }
 
-  await ref.set({
-    ...data,
-    health: "needs_audit" as IntegrationHealth,
-    current_sdk_version: null,
-    latest_sdk_version: null,
-    missing_features: [],
-    outdated_since: null,
-    last_checked: admin.firestore.FieldValue.serverTimestamp(),
-    approval_status: "none",
-    approved_by: null,
-    approved_at: null,
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(ref);
+    if (existing.exists) {
+      throw new Error(`Integration with slug "${data.slug}" already exists`);
+    }
+
+    tx.set(ref, {
+      ...data,
+      health: "needs_audit" as IntegrationHealth,
+      current_sdk_version: null,
+      latest_sdk_version: null,
+      missing_features: [],
+      outdated_since: null,
+      last_checked: admin.firestore.FieldValue.serverTimestamp(),
+      approval_status: "none",
+      approved_by: null,
+      approved_at: null,
+      audit_session_id: null,
+      audit_session_url: null,
+      audit_status: "none",
+      audit_started_at: null,
+      audit_result: null,
+    });
   });
   return true;
 }
@@ -256,6 +270,56 @@ export async function deleteIntegration(id: string): Promise<boolean> {
   if (!db) return false;
   await db.collection(INTEGRATIONS).doc(id).delete();
   return true;
+}
+
+// ─── Audit Session Tracking ──────────────────────────────────────
+
+export async function updateIntegrationAuditStatus(
+  id: string,
+  status: AuditStatus,
+  extra?: {
+    session_id?: string;
+    session_url?: string;
+    result?: string;
+  },
+): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+
+  const update: Record<string, unknown> = { audit_status: status };
+
+  if (extra?.session_id !== undefined) {
+    update.audit_session_id = extra.session_id;
+  }
+  if (extra?.session_url !== undefined) {
+    update.audit_session_url = extra.session_url;
+  }
+  if (status === "running") {
+    update.audit_started_at = admin.firestore.FieldValue.serverTimestamp();
+    update.audit_result = null;
+  }
+  if (extra?.result !== undefined) {
+    update.audit_result = extra.result;
+  }
+
+  await db.collection(INTEGRATIONS).doc(id).update(update);
+  return true;
+}
+
+export async function getIntegrationByAuditSessionId(
+  sessionId: string,
+): Promise<Integration | null> {
+  const db = getFirestore();
+  if (!db) return null;
+
+  const snap = await db
+    .collection(INTEGRATIONS)
+    .where("audit_session_id", "==", sessionId)
+    .limit(1)
+    .get();
+
+  if (snap.empty) return null;
+  return docToIntegration(snap.docs[0]);
 }
 
 // ─── Scout Repos ─────────────────────────────────────────────────

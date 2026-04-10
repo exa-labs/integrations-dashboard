@@ -19,6 +19,8 @@ const actionLabels: Record<ActivityAction, string> = {
   outreach_responded: "received response",
   status_change: "changed status",
   update_approved: "approved update",
+  audit_triggered: "triggered audit",
+  audit_completed: "audit completed",
   note: "added note",
 };
 
@@ -29,6 +31,8 @@ const actionDotColors: Record<ActivityAction, string> = {
   pr_created: "bg-blue-500",
   outreach_sent: "bg-blue-500",
   update_approved: "bg-indigo-500",
+  audit_triggered: "bg-purple-500",
+  audit_completed: "bg-purple-500",
   outreach_responded: "bg-purple-500",
   status_change: "bg-gray-400",
   note: "bg-gray-400",
