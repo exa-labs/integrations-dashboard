@@ -471,11 +471,19 @@ export async function checkAuditStatus(
       structured_output: Record<string, unknown> | null;
     };
 
-    const isFinished =
+    // Devin sessions can end in several states:
+    // - "stopped"/"finished" = terminal
+    // - "blocked" ("awaiting instructions") = session done with work, has structured output
+    const isTerminal =
       session.status_enum === "stopped" ||
       session.status_enum === "finished" ||
       session.status === "finished" ||
       session.status === "stopped";
+
+    const isBlocked =
+      session.status_enum === "blocked" || session.status === "blocked";
+
+    const isFinished = isTerminal || (isBlocked && session.structured_output !== null);
 
     const isFailed =
       session.status_enum === "failed" || session.status === "failed";
