@@ -2,7 +2,6 @@
 
 import {
   fetchIntegrations,
-  getManagerSummary,
   updateIntegrationHealth,
   updateIntegrationApproval,
   fetchScoutRepos,
@@ -44,11 +43,16 @@ export async function getInitialManagerData(): Promise<{
   summary: ManagerSummary;
   sdkState: SdkState | null;
 }> {
-  const [integrations, summary, sdkState] = await Promise.all([
+  const [integrations, sdkState] = await Promise.all([
     fetchIntegrations(),
-    getManagerSummary(),
     getSdkState(),
   ]);
+  const summary: ManagerSummary = {
+    total: integrations.length,
+    outdated: integrations.filter((i) => i.health === "outdated").length,
+    healthy: integrations.filter((i) => i.health === "healthy").length,
+    needs_audit: integrations.filter((i) => i.health === "needs_audit").length,
+  };
   return { integrations, summary, sdkState };
 }
 
