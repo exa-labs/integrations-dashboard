@@ -136,6 +136,9 @@ export async function GET(req: NextRequest) {
             if (auditResult.missing_features !== undefined) {
               healthUpdate.missing_features = auditResult.missing_features;
             }
+            if (auditResult.health === "outdated") {
+              healthUpdate.outdated_since = new Date();
+            }
             await updateIntegrationHealth(
               integration._id,
               auditResult.health,
