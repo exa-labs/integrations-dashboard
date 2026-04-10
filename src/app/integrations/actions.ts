@@ -287,6 +287,15 @@ export async function removeIntegration(
 
 // ─── Audit actions ──────────────────────────────────────────────
 
+function buildInternalApiUrl(path: string): string | null {
+  const rawBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
+  if (!rawBaseUrl) return null;
+  const hasProtocol = rawBaseUrl.startsWith("http://") || rawBaseUrl.startsWith("https://");
+  if (hasProtocol) return `${rawBaseUrl.replace(/\/$/, "")}${path}`;
+  const protocol = rawBaseUrl.includes("localhost") ? "http" : "https";
+  return `${protocol}://${rawBaseUrl}${path}`;
+}
+
 export async function triggerAudit(
   integrationId: string,
 ): Promise<ActionResult & { session_id?: string; session_url?: string }> {
@@ -296,12 +305,10 @@ export async function triggerAudit(
       return { success: false, error: "CRON_SECRET not configured" };
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
-    if (!baseUrl) {
+    const url = buildInternalApiUrl("/api/integrations/audit");
+    if (!url) {
       return { success: false, error: "BASE_URL not configured (set NEXT_PUBLIC_BASE_URL or VERCEL_URL)" };
     }
-    const protocol = baseUrl.includes("localhost") ? "http" : "https";
-    const url = `${protocol}://${baseUrl}/api/integrations/audit`;
 
     const response = await fetch(url, {
       method: "POST",
@@ -351,12 +358,10 @@ export async function checkAuditStatus(
       return { success: false, error: "CRON_SECRET not configured" };
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
-    if (!baseUrl) {
+    const url = buildInternalApiUrl("/api/integrations/audit/status");
+    if (!url) {
       return { success: false, error: "BASE_URL not configured (set NEXT_PUBLIC_BASE_URL or VERCEL_URL)" };
     }
-    const protocol = baseUrl.includes("localhost") ? "http" : "https";
-    const url = `${protocol}://${baseUrl}/api/integrations/audit/status`;
 
     const response = await fetch(url, {
       method: "POST",
