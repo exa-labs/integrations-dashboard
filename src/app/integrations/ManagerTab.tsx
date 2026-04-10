@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -65,6 +65,10 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
   const [auditLoading, setAuditLoading] = useState<string | null>(null);
   const [pollLoading, setPollLoading] = useState<string | null>(null);
   const [localIntegrations, setLocalIntegrations] = useState(integrations);
+
+  useEffect(() => {
+    setLocalIntegrations(integrations);
+  }, [integrations]);
 
   const handleTriggerAudit = useCallback(async (integration: Integration) => {
     if (auditLoading) return;

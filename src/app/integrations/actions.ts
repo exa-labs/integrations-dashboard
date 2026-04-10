@@ -297,10 +297,11 @@ export async function triggerAudit(
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
-    const protocol = baseUrl?.includes("localhost") ? "http" : "https";
-    const url = baseUrl
-      ? `${protocol}://${baseUrl}/api/integrations/audit`
-      : "/api/integrations/audit";
+    if (!baseUrl) {
+      return { success: false, error: "BASE_URL not configured (set NEXT_PUBLIC_BASE_URL or VERCEL_URL)" };
+    }
+    const protocol = baseUrl.includes("localhost") ? "http" : "https";
+    const url = `${protocol}://${baseUrl}/api/integrations/audit`;
 
     const response = await fetch(url, {
       method: "POST",
@@ -351,10 +352,11 @@ export async function checkAuditStatus(
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
-    const protocol = baseUrl?.includes("localhost") ? "http" : "https";
-    const url = baseUrl
-      ? `${protocol}://${baseUrl}/api/integrations/audit/status`
-      : "/api/integrations/audit/status";
+    if (!baseUrl) {
+      return { success: false, error: "BASE_URL not configured (set NEXT_PUBLIC_BASE_URL or VERCEL_URL)" };
+    }
+    const protocol = baseUrl.includes("localhost") ? "http" : "https";
+    const url = `${protocol}://${baseUrl}/api/integrations/audit/status`;
 
     const response = await fetch(url, {
       method: "POST",
