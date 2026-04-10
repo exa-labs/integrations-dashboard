@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getIntegration,
+  fetchIntegrations,
   updateIntegrationApproval,
   addActivityLogEntry,
 } from "@/lib/firebase-integrations";
@@ -18,9 +19,6 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { fetchIntegrations } = await import(
-      "@/lib/firebase-integrations"
-    );
     const integrations = await fetchIntegrations();
     const approved = integrations.filter(
       (i) => i.approval_status === "approved",

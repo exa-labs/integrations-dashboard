@@ -278,22 +278,29 @@ export async function upsertScoutRepos(
   const db = getFirestore();
   if (!db) return 0;
 
-  const batch = db.batch();
-  for (const repo of repos) {
-    const fullName = repo.full_name as string;
-    const docId = fullName.replace("/", "__");
-    const ref = db.collection(SCOUT_REPOS).doc(docId);
-    batch.set(
-      ref,
-      {
-        ...repo,
-        discovered_at: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+  const BATCH_LIMIT = 500;
+  let written = 0;
+
+  for (let i = 0; i < repos.length; i += BATCH_LIMIT) {
+    const chunk = repos.slice(i, i + BATCH_LIMIT);
+    const batch = db.batch();
+    for (const repo of chunk) {
+      const fullName = repo.full_name as string;
+      const docId = fullName.replace("/", "__");
+      const ref = db.collection(SCOUT_REPOS).doc(docId);
+      batch.set(
+        ref,
+        {
+          ...repo,
+          discovered_at: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+    await batch.commit();
+    written += chunk.length;
   }
-  await batch.commit();
-  return repos.length;
+  return written;
 }
 
 // ─── Activity Log ────────────────────────────────────────────────

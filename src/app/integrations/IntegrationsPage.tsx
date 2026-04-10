@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ManagerTab } from "./ManagerTab";
 import { ScoutTab } from "./ScoutTab";
@@ -38,7 +38,15 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "activity", label: "Activity" },
 ];
 
-export function IntegrationsPage({
+export function IntegrationsPage(props: Props) {
+  return (
+    <Suspense fallback={null}>
+      <IntegrationsPageInner {...props} />
+    </Suspense>
+  );
+}
+
+function IntegrationsPageInner({
   initialManager,
   initialScout,
   initialActivity,

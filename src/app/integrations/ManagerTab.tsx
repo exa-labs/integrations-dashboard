@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -303,9 +303,8 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
               </tr>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <>
+                <Fragment key={row.id}>
                   <tr
-                    key={row.id}
                     className="border-b border-gray-100 transition-colors hover:bg-gray-50"
                   >
                     {row.getVisibleCells().map((cell) => (
@@ -318,7 +317,7 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
                     ))}
                   </tr>
                   {expandedRow === row.original._id && (
-                    <tr key={`${row.id}-expanded`}>
+                    <tr>
                       <td colSpan={columns.length} className="bg-gray-50 px-4 py-4">
                         <IntegrationContextPanel
                           integration={row.original}
@@ -326,7 +325,7 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))
             )}
           </tbody>
