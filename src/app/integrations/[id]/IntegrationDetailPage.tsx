@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { triggerAudit, checkAuditStatus } from "../actions";
+import { triggerAudit, checkAuditStatus, getIntegrationData } from "../actions";
 import type {
   Integration,
   AuditHistoryEntry,
@@ -114,11 +114,15 @@ export function IntegrationDetailPage({
     setPollLoading(true);
     try {
       const result = await checkAuditStatus(integration._id);
-      if (result.success && result.audit_status) {
-        setIntegration((prev) => ({
-          ...prev,
-          audit_status: result.audit_status as AuditStatus,
-        }));
+      if (
+        result.success &&
+        (result.audit_status === "completed" || result.audit_status === "failed")
+      ) {
+        // Fetch full updated integration to refresh all fields
+        const updated = await getIntegrationData(integration._id);
+        if (updated) {
+          setIntegration(updated);
+        }
       }
     } finally {
       setPollLoading(false);
