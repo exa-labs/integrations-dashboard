@@ -283,19 +283,26 @@ export async function upsertScoutRepos(
 
   for (let i = 0; i < repos.length; i += BATCH_LIMIT) {
     const chunk = repos.slice(i, i + BATCH_LIMIT);
-    const batch = db.batch();
-    for (const repo of chunk) {
+
+    const refs = chunk.map((repo) => {
       const fullName = repo.full_name as string;
       const docId = fullName.replace("/", "__");
-      const ref = db.collection(SCOUT_REPOS).doc(docId);
-      batch.set(
-        ref,
-        {
-          ...repo,
-          discovered_at: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+      return db.collection(SCOUT_REPOS).doc(docId);
+    });
+    const snapshots = await db.getAll(...refs);
+    const existingIds = new Set(
+      snapshots.filter((s) => s.exists).map((s) => s.id),
+    );
+
+    const batch = db.batch();
+    for (let j = 0; j < chunk.length; j++) {
+      const repo = chunk[j];
+      const ref = refs[j];
+      const data: Record<string, unknown> = { ...repo };
+      if (!existingIds.has(ref.id)) {
+        data.discovered_at = admin.firestore.FieldValue.serverTimestamp();
+      }
+      batch.set(ref, data, { merge: true });
     }
     await batch.commit();
     written += chunk.length;
