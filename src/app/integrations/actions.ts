@@ -7,6 +7,7 @@ import {
   addIntegration,
   updateIntegrationContext,
   deleteIntegration,
+  getIntegration,
   fetchScoutRepos,
   getScoutSummary,
   updateScoutRepoOutreach,
@@ -282,6 +283,118 @@ export async function removeIntegration(
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
+}
+
+// ─── Audit actions ──────────────────────────────────────────────
+
+export async function triggerAudit(
+  integrationId: string,
+): Promise<ActionResult & { session_id?: string; session_url?: string }> {
+  try {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      return { success: false, error: "CRON_SECRET not configured" };
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
+    const protocol = baseUrl?.includes("localhost") ? "http" : "https";
+    const url = baseUrl
+      ? `${protocol}://${baseUrl}/api/integrations/audit`
+      : "/api/integrations/audit";
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cronSecret}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ integration_id: integrationId }),
+    });
+
+    const data = (await response.json()) as {
+      success?: boolean;
+      error?: string;
+      session_id?: string;
+      session_url?: string;
+    };
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error ?? `HTTP ${response.status}`,
+        session_id: data.session_id,
+        session_url: data.session_url,
+      };
+    }
+
+    return {
+      success: true,
+      session_id: data.session_id,
+      session_url: data.session_url,
+    };
+  } catch (error) {
+    console.error("[Integrations] triggerAudit failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function checkAuditStatus(
+  integrationId: string,
+): Promise<ActionResult & { audit_status?: string; result?: unknown; session_url?: string }> {
+  try {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      return { success: false, error: "CRON_SECRET not configured" };
+    }
+
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
+    const protocol = baseUrl?.includes("localhost") ? "http" : "https";
+    const url = baseUrl
+      ? `${protocol}://${baseUrl}/api/integrations/audit/status`
+      : "/api/integrations/audit/status";
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cronSecret}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ integration_id: integrationId }),
+    });
+
+    const data = (await response.json()) as {
+      status?: string;
+      result?: unknown;
+      session_url?: string;
+      error?: string;
+    };
+
+    if (!response.ok) {
+      return { success: false, error: data.error ?? `HTTP ${response.status}` };
+    }
+
+    return {
+      success: true,
+      audit_status: data.status,
+      result: data.result,
+      session_url: data.session_url,
+    };
+  } catch (error) {
+    console.error("[Integrations] checkAuditStatus failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function getIntegrationData(
+  integrationId: string,
+): Promise<Integration | null> {
+  return getIntegration(integrationId);
 }
 
 // ─── Filtered fetches ────────────────────────────────────────────

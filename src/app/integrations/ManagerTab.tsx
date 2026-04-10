@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -18,9 +18,11 @@ import { AddIntegrationDialog } from "./AddIntegrationDialog";
 import { EditContextDialog } from "./EditContextDialog";
 import { IntegrationContextPanel } from "./IntegrationContextPanel";
 import { formatDate } from "@/lib/utils";
+import { triggerAudit, checkAuditStatus, getIntegrationData } from "./actions";
 import type {
   Integration,
   IntegrationHealth,
+  AuditStatus,
   ManagerSummary,
   SdkState,
 } from "@/types/integrations";
@@ -35,6 +37,13 @@ const healthLabels: Record<IntegrationHealth, string> = {
   healthy: "Healthy",
   outdated: "Outdated",
   needs_audit: "Needs Audit",
+};
+
+const auditStatusLabels: Record<AuditStatus, string> = {
+  none: "",
+  running: "Auditing...",
+  completed: "Audit Done",
+  failed: "Audit Failed",
 };
 
 const columnHelper = createColumnHelper<Integration>();
@@ -53,11 +62,64 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
   const [approveTarget, setApproveTarget] = useState<Integration | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editTarget, setEditTarget] = useState<Integration | null>(null);
+  const [auditLoading, setAuditLoading] = useState<string | null>(null);
+  const [pollLoading, setPollLoading] = useState<string | null>(null);
+  const [localIntegrations, setLocalIntegrations] = useState(integrations);
+
+  const handleTriggerAudit = useCallback(async (integration: Integration) => {
+    if (auditLoading) return;
+    setAuditLoading(integration._id);
+    try {
+      const result = await triggerAudit(integration._id);
+      if (result.success && result.session_url) {
+        setLocalIntegrations((prev) =>
+          prev.map((i) =>
+            i._id === integration._id
+              ? {
+                  ...i,
+                  audit_status: "running" as AuditStatus,
+                  audit_session_id: result.session_id ?? null,
+                  audit_session_url: result.session_url ?? null,
+                  audit_started_at: new Date(),
+                  audit_result: null,
+                }
+              : i,
+          ),
+        );
+      } else if (result.error === "Audit already running" && result.session_url) {
+        window.open(result.session_url, "_blank");
+      } else {
+        alert(result.error ?? "Failed to trigger audit");
+      }
+    } finally {
+      setAuditLoading(null);
+    }
+  }, [auditLoading]);
+
+  const handleCheckStatus = useCallback(async (integration: Integration) => {
+    if (pollLoading) return;
+    setPollLoading(integration._id);
+    try {
+      const result = await checkAuditStatus(integration._id);
+      if (result.success && result.audit_status) {
+        if (result.audit_status === "completed" || result.audit_status === "failed") {
+          const updated = await getIntegrationData(integration._id);
+          if (updated) {
+            setLocalIntegrations((prev) =>
+              prev.map((i) => (i._id === integration._id ? updated : i)),
+            );
+          }
+        }
+      }
+    } finally {
+      setPollLoading(null);
+    }
+  }, [pollLoading]);
 
   const filteredData = useMemo(() => {
-    if (healthFilter === "all") return integrations;
-    return integrations.filter((i) => i.health === healthFilter);
-  }, [integrations, healthFilter]);
+    if (healthFilter === "all") return localIntegrations;
+    return localIntegrations.filter((i) => i.health === healthFilter);
+  }, [localIntegrations, healthFilter]);
 
   const columns = useMemo(
     () => [
@@ -150,6 +212,23 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
           return <Badge variant={status}>{status.replace("_", " ")}</Badge>;
         },
       }),
+      columnHelper.accessor("audit_status", {
+        header: "Audit",
+        cell: (info) => {
+          const status = info.getValue();
+          const label = auditStatusLabels[status];
+          if (!label) return <span className="text-gray-400">—</span>;
+          const variant =
+            status === "running"
+              ? "needs_audit"
+              : status === "completed"
+                ? "healthy"
+                : status === "failed"
+                  ? "outdated"
+                  : "needs_audit";
+          return <Badge variant={variant}>{label}</Badge>;
+        },
+      }),
       columnHelper.display({
         id: "actions",
         header: "",
@@ -201,12 +280,48 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
                   )}
                 </>
               )}
+              {row.audit_status === "running" ? (
+                <>
+                  {row.audit_session_url && (
+                    <a
+                      href={row.audit_session_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs text-purple-600 hover:text-purple-800 underline"
+                    >
+                      View Session
+                    </a>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCheckStatus(row);
+                    }}
+                    disabled={pollLoading === row._id}
+                    className="text-xs text-orange-600 hover:text-orange-800 disabled:opacity-50"
+                  >
+                    {pollLoading === row._id ? "Checking..." : "Check Status"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTriggerAudit(row);
+                  }}
+                  disabled={auditLoading === row._id}
+                  className="text-xs text-purple-600 hover:text-purple-800 disabled:opacity-50"
+                >
+                  {auditLoading === row._id ? "Starting..." : "Trigger Audit"}
+                </button>
+              )}
             </div>
           );
         },
       }),
     ],
-    [expandedRow],
+    [expandedRow, auditLoading, pollLoading, handleCheckStatus, handleTriggerAudit],
   );
 
   const table = useReactTable({
