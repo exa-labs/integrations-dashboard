@@ -3,6 +3,8 @@ import { getFirestore } from "./firebase";
 import type {
   Integration,
   IntegrationHealth,
+  IntegrationType,
+  IntegrationUpdateContext,
   ScoutRepo,
   ActivityLogEntry,
   ActivityAction,
@@ -199,6 +201,61 @@ export async function upsertIntegrations(
     written += chunk.length;
   }
   return written;
+}
+
+export async function addIntegration(data: {
+  name: string;
+  slug: string;
+  type: IntegrationType;
+  repo: string;
+  update_context: IntegrationUpdateContext;
+}): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+
+  await db
+    .collection(INTEGRATIONS)
+    .doc(data.slug)
+    .set(
+      {
+        ...data,
+        health: "needs_audit" as IntegrationHealth,
+        current_sdk_version: null,
+        latest_sdk_version: null,
+        missing_features: [],
+        outdated_since: null,
+        last_checked: admin.firestore.FieldValue.serverTimestamp(),
+        approval_status: "none",
+        approved_by: null,
+        approved_at: null,
+      },
+      { merge: true },
+    );
+  return true;
+}
+
+export async function updateIntegrationContext(
+  id: string,
+  context: IntegrationUpdateContext,
+  extra?: { name?: string; type?: IntegrationType; repo?: string },
+): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+
+  const update: Record<string, unknown> = { update_context: context };
+  if (extra?.name) update.name = extra.name;
+  if (extra?.type) update.type = extra.type;
+  if (extra?.repo) update.repo = extra.repo;
+
+  await db.collection(INTEGRATIONS).doc(id).update(update);
+  return true;
+}
+
+export async function deleteIntegration(id: string): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+  await db.collection(INTEGRATIONS).doc(id).delete();
+  return true;
 }
 
 // ─── Scout Repos ─────────────────────────────────────────────────

@@ -4,6 +4,9 @@ import {
   fetchIntegrations,
   updateIntegrationHealth,
   updateIntegrationApproval,
+  addIntegration,
+  updateIntegrationContext,
+  deleteIntegration,
   fetchScoutRepos,
   getScoutSummary,
   updateScoutRepoOutreach,
@@ -13,6 +16,8 @@ import {
 } from "@/lib/firebase-integrations";
 import type {
   Integration,
+  IntegrationType,
+  IntegrationUpdateContext,
   ScoutRepo,
   ActivityLogEntry,
   ManagerSummary,
@@ -184,6 +189,94 @@ export async function approveIntegrationUpdate(
     return { success: true };
   } catch (error) {
     console.error("[Integrations] approve failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+// ─── Integration CRUD ────────────────────────────────────────────
+
+export async function addNewIntegration(
+  name: string,
+  slug: string,
+  type: IntegrationType,
+  repo: string,
+  updateContext: IntegrationUpdateContext,
+): Promise<ActionResult> {
+  try {
+    await addIntegration({ name, slug, type, repo, update_context: updateContext });
+
+    await addActivityLogEntry({
+      actor: "dashboard-user",
+      action: "note",
+      target_type: "integration",
+      target_id: slug,
+      target_name: name,
+      details: `Added integration: ${name}`,
+      pr_url: null,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Integrations] addNew failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function editIntegrationContext(
+  integrationId: string,
+  integrationName: string,
+  context: IntegrationUpdateContext,
+  extra?: { name?: string; type?: IntegrationType; repo?: string },
+): Promise<ActionResult> {
+  try {
+    await updateIntegrationContext(integrationId, context, extra);
+
+    await addActivityLogEntry({
+      actor: "dashboard-user",
+      action: "note",
+      target_type: "integration",
+      target_id: integrationId,
+      target_name: integrationName,
+      details: "Updated integration context",
+      pr_url: null,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Integrations] editContext failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function removeIntegration(
+  integrationId: string,
+  integrationName: string,
+): Promise<ActionResult> {
+  try {
+    await deleteIntegration(integrationId);
+
+    await addActivityLogEntry({
+      actor: "dashboard-user",
+      action: "note",
+      target_type: "integration",
+      target_id: integrationId,
+      target_name: integrationName,
+      details: `Removed integration: ${integrationName}`,
+      pr_url: null,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Integrations] remove failed:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

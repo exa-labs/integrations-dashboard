@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { MarkFixedDialog } from "./MarkFixedDialog";
 import { ApproveUpdateDialog } from "./ApproveUpdateDialog";
+import { AddIntegrationDialog } from "./AddIntegrationDialog";
+import { EditContextDialog } from "./EditContextDialog";
 import { IntegrationContextPanel } from "./IntegrationContextPanel";
 import { formatDate } from "@/lib/utils";
 import type {
@@ -49,6 +51,8 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
     null,
   );
   const [approveTarget, setApproveTarget] = useState<Integration | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editTarget, setEditTarget] = useState<Integration | null>(null);
 
   const filteredData = useMemo(() => {
     if (healthFilter === "all") return integrations;
@@ -164,6 +168,15 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
               >
                 {expandedRow === row._id ? "Hide" : "Context"}
               </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditTarget(row);
+                }}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Edit
+              </button>
               {row.health === "outdated" && (
                 <>
                   <button
@@ -241,7 +254,7 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
         </div>
       )}
 
-      {/* Filter */}
+      {/* Filter + Add */}
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-500">Filter:</span>
         {(["all", "outdated", "needs_audit", "healthy"] as const).map(
@@ -261,6 +274,12 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
             </button>
           ),
         )}
+        <button
+          onClick={() => setShowAddDialog(true)}
+          className="ml-auto rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
+        >
+          + Add Integration
+        </button>
       </div>
 
       {/* Table */}
@@ -343,6 +362,15 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
         <ApproveUpdateDialog
           integration={approveTarget}
           onClose={() => setApproveTarget(null)}
+        />
+      )}
+      {showAddDialog && (
+        <AddIntegrationDialog onClose={() => setShowAddDialog(false)} />
+      )}
+      {editTarget && (
+        <EditContextDialog
+          integration={editTarget}
+          onClose={() => setEditTarget(null)}
         />
       )}
     </div>
