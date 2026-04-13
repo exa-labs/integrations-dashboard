@@ -487,9 +487,11 @@ async function processGhostPrPolling(): Promise<GhostPrTickResult> {
           approval_status: prUrl ? "none" : "approved",
         });
 
-        // If PR was created, mark integration as healthy
+        // If PR was created, mark integration as healthy and sync SDK version
         if (prUrl) {
-          await updateIntegrationHealth(integration._id, "healthy", {});
+          await updateIntegrationHealth(integration._id, "healthy", {
+            current_sdk_version: integration.latest_sdk_version,
+          });
         }
 
         await addActivityLogEntry({
@@ -542,6 +544,9 @@ function getAuditCandidates(
   const eligible = integrations.filter((i) => {
     // Skip currently running
     if (i.audit_status === "running") return false;
+
+    // Skip integrations with in-progress ghost PRs (avoid state conflicts)
+    if (i.approval_status === "in_progress") return false;
 
     // Skip recently audited (within cooldown)
     if (i.last_audit_completed_at) {
