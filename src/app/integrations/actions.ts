@@ -419,7 +419,7 @@ export async function triggerBulkAudit(): Promise<
   try {
     const integrations = await fetchIntegrations();
     const eligible = integrations.filter(
-      (i) => i.audit_status !== "running",
+      (i) => i.audit_status !== "running" && i.approval_status !== "in_progress",
     );
     const skipped = integrations.length - eligible.length;
 
@@ -501,6 +501,7 @@ export async function triggerGhostPr(
       ghost_pr_session_id: session.session_id,
       ghost_pr_session_url: session.url,
       ghost_pr_started_at: new Date(),
+      ghost_pr_url: null,
       approval_status: "in_progress",
     });
 
