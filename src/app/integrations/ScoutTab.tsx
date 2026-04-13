@@ -15,7 +15,7 @@ import { SummaryCard } from "@/components/ui/summary-card";
 import { MarkContactedDialog } from "./MarkContactedDialog";
 import { RepoDetailPanel } from "./RepoDetailPanel";
 import { formatRelativeTime } from "@/lib/utils";
-import type { ScoutRepo, ScoutScore, ScoutSummary } from "@/types/integrations";
+import type { ScoutRepo, ExaFit, ScoutSummary } from "@/types/integrations";
 import type { CronJobState } from "@/types/cron";
 
 interface Props {
@@ -24,10 +24,9 @@ interface Props {
   cronStates: CronJobState[];
 }
 
-const scoreLabels: Record<ScoutScore, string> = {
-  strong: "Strong",
-  medium: "Medium",
-  weak: "Weak",
+const exaFitLabels: Record<ExaFit, string> = {
+  strong: "Strong Fit",
+  medium: "Medium Fit",
 };
 
 const columnHelper = createColumnHelper<ScoutRepo>();
@@ -39,16 +38,16 @@ function isCronLocked(state: CronJobState): boolean {
 export function ScoutTab({ repos, summary, cronStates }: Props) {
   const scoutCron = cronStates.find((c) => c.type === "scout");
   const [sorting, setSorting] = useState<SortingState>([
-    { id: "score", desc: false },
+    { id: "exa_fit", desc: false },
   ]);
-  const [scoreFilter, setScoreFilter] = useState<ScoutScore | "all">("all");
+  const [fitFilter, setFitFilter] = useState<ExaFit | "all">("all");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [contactTarget, setContactTarget] = useState<ScoutRepo | null>(null);
 
   const filteredData = useMemo(() => {
-    if (scoreFilter === "all") return repos;
-    return repos.filter((r) => r.score === scoreFilter);
-  }, [repos, scoreFilter]);
+    if (fitFilter === "all") return repos;
+    return repos.filter((r) => r.exa_fit === fitFilter);
+  }, [repos, fitFilter]);
 
   const columns = useMemo(
     () => [
@@ -81,29 +80,32 @@ export function ScoutTab({ repos, summary, cronStates }: Props) {
           </span>
         ),
       }),
-      columnHelper.accessor("score", {
-        header: "Score",
-        cell: (info) => (
-          <Badge variant={info.getValue()}>
-            {scoreLabels[info.getValue()]}
-          </Badge>
-        ),
+      columnHelper.accessor("exa_fit", {
+        header: "Exa Fit",
+        cell: (info) => {
+          const val = info.getValue();
+          if (!val) return <span className="text-gray-400">—</span>;
+          return (
+            <Badge variant={val}>
+              {exaFitLabels[val]}
+            </Badge>
+          );
+        },
         sortingFn: (a, b) => {
           const order: Record<string, number> = {
             strong: 0,
             medium: 1,
-            weak: 2,
           };
           return (
-            (order[a.original.score] ?? 3) - (order[b.original.score] ?? 3)
+            (order[a.original.exa_fit ?? ""] ?? 2) - (order[b.original.exa_fit ?? ""] ?? 2)
           );
         },
       }),
-      columnHelper.accessor("uses_search", {
-        header: "Uses Search",
+      columnHelper.accessor("current_search_tool", {
+        header: "Current Search Tool",
         cell: (info) => {
           const val = info.getValue();
-          if (!val) return <span className="text-gray-400">—</span>;
+          if (!val || val === "none") return <span className="text-gray-400">None</span>;
           return (
             <span className="rounded bg-orange-100 px-1.5 py-0.5 text-xs text-orange-800">
               {val}
@@ -208,17 +210,17 @@ export function ScoutTab({ repos, summary, cronStates }: Props) {
 
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-500">Filter:</span>
-        {(["all", "strong", "medium", "weak"] as const).map((filter) => (
+        {(["all", "strong", "medium"] as const).map((filter) => (
           <button
             key={filter}
-            onClick={() => setScoreFilter(filter)}
+            onClick={() => setFitFilter(filter)}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              scoreFilter === filter
+              fitFilter === filter
                 ? "bg-blue-600 text-white"
                 : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
-            {filter === "all" ? "All" : scoreLabels[filter as ScoutScore]}
+            {filter === "all" ? "All" : exaFitLabels[filter as ExaFit]}
           </button>
         ))}
       </div>

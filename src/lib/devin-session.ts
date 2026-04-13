@@ -43,11 +43,12 @@ export interface ScoutResult {
     url: string;
     stars: number;
     star_velocity: number;
-    score: "strong" | "medium" | "weak";
-    uses_search: string | null;
+    exa_fit: "strong" | "medium";
+    current_search_tool: string | null;
     readme_summary: string;
-    integration_pattern: string | null;
+    integration_opportunity: string | null;
     key_reviewers: string[];
+    outreach_note: string | null;
   }>;
   summary: string;
 }
@@ -334,22 +335,63 @@ export const AUDIT_STRUCTURED_OUTPUT_SCHEMA = {
 
 // ─── Scout Prompt Builder ────────────────────────────────────────
 
-export function buildScoutPrompt(): string {
-  return `# Scout: Discover Exa Integration Repos
+export function buildScoutPrompt(skipSlugs: string[]): string {
+  const skipSection =
+    skipSlugs.length > 0
+      ? [
+          "",
+          "## Already Known Repos — SKIP THESE",
+          "The following repos are already tracked. Do NOT spend time on them:",
+          skipSlugs.map((s) => `- ${s}`).join("\n"),
+          "",
+        ].join("\n")
+      : "";
 
-## Task
-Search for GitHub repositories that use the Exa API (via exa-py or exa-js SDK). Find repos that have meaningful integrations — not just basic examples.
+  return `# Scout: Find Repos That Would Benefit From an Exa Integration
 
-## Steps
-1. Search GitHub for repositories that import \`exa_py\` or \`exa-js\` or reference \`api.exa.ai\`
-2. For each repo found:
-   - Check the star count and recent commit activity
-   - Determine the integration depth (simple search call vs deep integration)
-   - Identify the integration pattern (search, contents, highlights, etc.)
-   - Find key reviewers/maintainers from recent PRs
-   - Write a brief summary of what the repo does
-3. Score each repo: "strong" (>100 stars, active, deep integration), "medium" (some usage, moderate activity), "weak" (minimal usage or inactive)
-4. Return your findings as structured output
+## Goal
+Find the fastest-growing AI agent and retrieval-related GitHub repositories that do NOT already use Exa but WOULD benefit from an Exa integration. We are looking for outreach targets — repos where adding Exa search/contents/highlights would be a meaningful improvement.
+
+## Important: What NOT to Look For
+- Do NOT find repos that already use the Exa SDK (exa-py, exa-js, api.exa.ai)
+- Do NOT include any repos under the \`exa-labs\` GitHub org — those are our own
+- Do NOT include repos that are just tutorials, toy examples, or inactive (no commits in 3+ months)
+${skipSection}
+## Phase 1 — Find Trending Agent/AI Repos
+
+Search for recently popular GitHub repositories in these categories:
+1. **AI agent frameworks** — autonomous agents, multi-agent systems, agent toolkits
+2. **RAG pipelines** — retrieval-augmented generation, document Q&A, knowledge bases
+3. **Research assistants** — deep research tools, web research automation
+4. **Search-augmented LLM apps** — chatbots with web search, fact-checking tools
+
+Use multiple search strategies:
+- Browse https://github.com/trending for today's trending repos
+- Search GitHub for repos with keywords: "agent framework", "RAG", "web search tool", "retrieval augmented", "research assistant"
+- Look for repos that gained significant stars recently (high velocity)
+
+Target: surface 8–12 distinct repos that are active, growing, and agent/retrieval-related.
+
+## Phase 2 — Evaluate Each Repo
+
+For the most promising repos (top 6–8), dig deeper:
+1. Read the README to understand what the repo does
+2. Check what search/retrieval tools it currently uses (Tavily, Serper, SerpAPI, Bing, Google, Perplexity, etc.)
+3. Determine if it has a plugin/tool system where Exa could be added
+4. Check star count, recent commit activity, and contributor count
+
+## Phase 3 — Score Exa Fit
+
+For each repo, assign an \`exa_fit\` score:
+- **strong** — already uses web search/retrieval with an inferior tool (Tavily, SerpAPI, Serper, Bing) OR has a tool/plugin interface that clearly lacks good search. Exa would be a direct upgrade.
+- **medium** — does research, Q&A, or browsing tasks but doesn't yet have a search layer. Exa could add real-time web access.
+- **weak** — agent is code-execution focused, math, vision, or purely local. Search wouldn't add much.
+
+Only include repos with \`exa_fit\` of "strong" or "medium" in your output. Drop "weak" repos entirely.
+
+## Phase 4 — Output
+
+Return your findings as structured output. For the top 2–3 "strong" fit repos, also write a brief 2–3 sentence outreach note that frames Exa as the search layer worth trying (mention exa.ai).
 
 ## Structured Output
 You MUST provide structured output with these fields:
@@ -358,12 +400,13 @@ You MUST provide structured output with these fields:
   - \`url\`: GitHub URL
   - \`stars\`: star count
   - \`star_velocity\`: approximate stars per week (0 if unknown)
-  - \`score\`: "strong", "medium", or "weak"
-  - \`uses_search\`: which Exa endpoints are used (e.g., "search, contents") or null
-  - \`readme_summary\`: one-sentence description
-  - \`integration_pattern\`: how Exa is used (e.g., "RAG pipeline", "search widget") or null
+  - \`exa_fit\`: "strong" or "medium"
+  - \`current_search_tool\`: what search/retrieval tool the repo currently uses (e.g. "Tavily", "SerpAPI", "none") or null
+  - \`readme_summary\`: one-sentence description of what the repo does
+  - \`integration_opportunity\`: how Exa could be integrated (e.g. "Replace Tavily in tool config", "Add as search provider plugin") or null
   - \`key_reviewers\`: array of GitHub usernames of active maintainers
-- \`summary\`: brief summary of discovery results
+  - \`outreach_note\`: 2–3 sentence outreach message for "strong" fit repos, null for others
+- \`summary\`: brief summary of discovery results (e.g. "Found 8 repos, 3 strong Exa fit targets")
 `;
 }
 
@@ -379,13 +422,20 @@ export const SCOUT_STRUCTURED_OUTPUT_SCHEMA = {
           url: { type: "string" },
           stars: { type: "number" },
           star_velocity: { type: "number" },
-          score: { type: "string", enum: ["strong", "medium", "weak"] },
-          uses_search: { type: ["string", "null"] },
+          exa_fit: { type: "string", enum: ["strong", "medium"] },
+          current_search_tool: { type: ["string", "null"] },
           readme_summary: { type: "string" },
-          integration_pattern: { type: ["string", "null"] },
+          integration_opportunity: { type: ["string", "null"] },
           key_reviewers: { type: "array", items: { type: "string" } },
+          outreach_note: { type: ["string", "null"] },
         },
-        required: ["full_name", "url", "stars", "score", "readme_summary"],
+        required: [
+          "full_name",
+          "url",
+          "stars",
+          "exa_fit",
+          "readme_summary",
+        ],
       },
     },
     summary: { type: "string" },

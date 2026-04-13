@@ -69,12 +69,16 @@ function docToScoutRepo(
     stars: d.stars ?? 0,
     star_velocity: d.star_velocity ?? 0,
     score: d.score ?? "weak",
+    exa_fit: d.exa_fit ?? null,
+    current_search_tool: d.current_search_tool ?? null,
     uses_search: d.uses_search ?? null,
     readme_summary: d.readme_summary ?? "",
     integration_pattern: d.integration_pattern ?? null,
+    integration_opportunity: d.integration_opportunity ?? null,
     key_reviewers: d.key_reviewers ?? [],
     outreach_status: d.outreach_status ?? "pending",
     outreach_draft: d.outreach_draft ?? null,
+    outreach_note: d.outreach_note ?? null,
     discovered_at: d.discovered_at?.toDate?.() ?? new Date(),
     contacted_at: d.contacted_at?.toDate?.() ?? null,
     contacted_by: d.contacted_by ?? null,
@@ -464,7 +468,7 @@ export async function getScoutSummary(): Promise<ScoutSummary> {
       .get(),
     db
       .collection(SCOUT_REPOS)
-      .where("score", "==", "strong")
+      .where("exa_fit", "==", "strong")
       .count()
       .get(),
     db
@@ -517,6 +521,64 @@ export async function upsertScoutRepos(
     written += chunk.length;
   }
   return written;
+}
+
+/**
+ * Get all known repo slugs for the scout skip list.
+ * Combines: integration repo URLs + already-discovered scout repo slugs.
+ */
+export async function getKnownRepoSlugs(): Promise<string[]> {
+  const db = getFirestore();
+  if (!db) return [];
+
+  const [integrations, scoutSnap] = await Promise.all([
+    fetchIntegrations(),
+    db.collection(SCOUT_REPOS).select("full_name").get(),
+  ]);
+
+  const slugs = new Set<string>();
+
+  // Extract slugs from integration repo URLs (e.g. "https://github.com/org/repo" → "org/repo")
+  for (const i of integrations) {
+    if (i.repo) {
+      const match = i.repo.match(/github\.com\/([^/]+\/[^/]+)/);
+      if (match) slugs.add(match[1]);
+    }
+  }
+
+  // Add all already-discovered scout repo slugs
+  for (const doc of scoutSnap.docs) {
+    const fullName = doc.data().full_name;
+    if (fullName) slugs.add(fullName);
+  }
+
+  return Array.from(slugs);
+}
+
+/**
+ * Delete all documents in the scout_repos collection.
+ */
+export async function clearScoutRepos(): Promise<number> {
+  const db = getFirestore();
+  if (!db) return 0;
+
+  const snap = await db.collection(SCOUT_REPOS).get();
+  if (snap.empty) return 0;
+
+  const BATCH_LIMIT = 500;
+  let deleted = 0;
+
+  for (let i = 0; i < snap.docs.length; i += BATCH_LIMIT) {
+    const chunk = snap.docs.slice(i, i + BATCH_LIMIT);
+    const batch = db.batch();
+    for (const doc of chunk) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+    deleted += chunk.length;
+  }
+
+  return deleted;
 }
 
 // ─── Activity Log ────────────────────────────────────────────────

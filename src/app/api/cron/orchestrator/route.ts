@@ -21,6 +21,7 @@ import {
   updateIntegrationAuditStatus,
   addActivityLogEntry,
   upsertScoutRepos,
+  getKnownRepoSlugs,
 } from "@/lib/firebase-integrations";
 import type { CronJobState } from "@/types/cron";
 import type { Integration } from "@/types/integrations";
@@ -260,11 +261,12 @@ async function processScoutJob(): Promise<ScoutTickResult> {
               url: string;
               stars: number;
               star_velocity: number;
-              score: "strong" | "medium" | "weak";
-              uses_search: string | null;
+              exa_fit: "strong" | "medium";
+              current_search_tool: string | null;
               readme_summary: string;
-              integration_pattern: string | null;
+              integration_opportunity: string | null;
               key_reviewers: string[];
+              outreach_note: string | null;
             }>;
             summary?: string;
           } | null;
@@ -309,10 +311,12 @@ async function processScoutJob(): Promise<ScoutTickResult> {
     // If no active session and cooldown passed, spawn a new one
     if (shouldSpawn(state)) {
       try {
-        const prompt = buildScoutPrompt();
+        // Fetch all known repo slugs to avoid re-discovering them
+        const skipSlugs = await getKnownRepoSlugs();
+        const prompt = buildScoutPrompt(skipSlugs);
         const session = await spawnDevinSession(
           prompt,
-          "Scout: Discover Exa Integration Repos",
+          "Scout: Find Exa Integration Opportunities",
           SCOUT_STRUCTURED_OUTPUT_SCHEMA,
         );
 
