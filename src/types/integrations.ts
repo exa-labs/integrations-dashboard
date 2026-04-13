@@ -24,6 +24,8 @@ export type ActivityAction =
   | "outreach_responded"
   | "status_change"
   | "update_approved"
+  | "ghost_pr_started"
+  | "ghost_pr_completed"
   | "audit_triggered"
   | "audit_completed"
   | "scout_started"
@@ -56,6 +58,9 @@ export interface Integration {
   approval_status: "none" | "pending_approval" | "approved" | "in_progress";
   approved_by: string | null;
   approved_at: Date | null;
+  ghost_pr_session_id: string | null;
+  ghost_pr_session_url: string | null;
+  ghost_pr_url: string | null;
   audit_session_id: string | null;
   audit_session_url: string | null;
   audit_status: AuditStatus;

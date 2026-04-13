@@ -19,12 +19,18 @@ import {
 } from "@/lib/devin-session";
 import {
   updateIntegrationAuditStatus,
+  updateIntegrationHealth,
   addActivityLogEntry,
   upsertScoutRepos,
   getKnownRepoSlugs,
+  updateGhostPrStatus,
 } from "@/lib/firebase-integrations";
 import type { CronJobState } from "@/types/cron";
 import type { Integration } from "@/types/integrations";
+import {
+  notifyAuditCompleted,
+  notifyStrongScoutFinds,
+} from "@/lib/slack";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -69,6 +75,17 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error("[Orchestrator] Audit error:", error);
     summary.audit = {
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+
+  // Process ghost PRs (poll in-progress sessions)
+  try {
+    const ghostResult = await processGhostPrPolling();
+    summary.ghost_prs = ghostResult;
+  } catch (error) {
+    console.error("[Orchestrator] Ghost PR error:", error);
+    summary.ghost_prs = {
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
@@ -135,6 +152,22 @@ async function processAuditJob(): Promise<AuditTickResult> {
         } else if (sessionState.isFinished) {
           await completeAudit(integration, sessionState, "cron");
           result.completed++;
+
+          // Slack notify for non-healthy audit results
+          const auditOut = sessionState.structured_output as {
+            health?: string;
+            summary?: string;
+          } | null;
+          if (auditOut?.health && auditOut.health !== "healthy") {
+            await notifyAuditCompleted(
+              integration.name,
+              integration.slug,
+              auditOut.health,
+              auditOut.summary ?? "Audit completed",
+            ).catch((e) =>
+              console.error("[Orchestrator] Slack audit notify error:", e),
+            );
+          }
         }
         // else still running — do nothing
       } catch (err) {
@@ -273,6 +306,25 @@ async function processScoutJob(): Promise<ScoutTickResult> {
 
           if (scoutResult?.repos) {
             await upsertScoutRepos(scoutResult.repos);
+
+            // Slack notify for strong scout finds
+            const strongRepos = (scoutResult.repos ?? []).filter(
+              (r: { exa_fit?: string }) => r.exa_fit === "strong",
+            );
+            if (strongRepos.length > 0) {
+              await notifyStrongScoutFinds(
+                strongRepos as Array<{
+                  full_name: string;
+                  url: string;
+                  exa_fit: string;
+                  current_search_tool: string | null;
+                  readme_summary: string;
+                }>,
+                scoutResult.summary ?? "",
+              ).catch((e) =>
+                console.error("[Orchestrator] Slack scout notify error:", e),
+              );
+            }
           }
 
           await updateScoutSession({
@@ -359,6 +411,86 @@ async function processScoutJob(): Promise<ScoutTickResult> {
     await releaseTickLock("scout");
     throw error;
   }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────
+
+// ─── Ghost PR Polling ────────────────────────────────────────────
+
+interface GhostPrTickResult {
+  polled: number;
+  completed: number;
+  failed: number;
+}
+
+async function processGhostPrPolling(): Promise<GhostPrTickResult> {
+  const integrations = await fetchIntegrations();
+  const inProgress = integrations.filter(
+    (i) => i.approval_status === "in_progress" && i.ghost_pr_session_id,
+  );
+
+  const result: GhostPrTickResult = { polled: 0, completed: 0, failed: 0 };
+
+  for (const integration of inProgress) {
+    try {
+      const sessionState = await pollDevinSession(integration.ghost_pr_session_id!);
+      result.polled++;
+
+      if (sessionState.isFailed) {
+        await updateGhostPrStatus(integration._id, {
+          approval_status: "approved", // Reset to approved so user can retry
+          ghost_pr_session_id: null,
+          ghost_pr_session_url: null,
+        });
+        await addActivityLogEntry({
+          actor: "cron/orchestrator",
+          action: "ghost_pr_completed",
+          target_type: "integration",
+          target_id: integration._id,
+          target_name: integration.name,
+          details: "Ghost PR session failed",
+          pr_url: null,
+        });
+        result.failed++;
+      } else if (sessionState.isFinished) {
+        const ghostResult = sessionState.structured_output as {
+          pr_url?: string | null;
+          summary?: string;
+          success?: boolean;
+        } | null;
+
+        const prUrl = ghostResult?.pr_url ?? null;
+
+        await updateGhostPrStatus(integration._id, {
+          ghost_pr_url: prUrl,
+          approval_status: prUrl ? "none" : "approved",
+        });
+
+        // If PR was created, mark integration as healthy
+        if (prUrl) {
+          await updateIntegrationHealth(integration._id, "healthy", {});
+        }
+
+        await addActivityLogEntry({
+          actor: "cron/orchestrator",
+          action: "ghost_pr_completed",
+          target_type: "integration",
+          target_id: integration._id,
+          target_name: integration.name,
+          details: ghostResult?.summary ?? "Ghost PR session completed",
+          pr_url: prUrl,
+        });
+        result.completed++;
+      }
+    } catch (err) {
+      console.error(
+        `[Orchestrator] Error polling ghost PR for ${integration.name}:`,
+        err,
+      );
+    }
+  }
+
+  return result;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────

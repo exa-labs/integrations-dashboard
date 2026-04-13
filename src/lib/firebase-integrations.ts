@@ -49,6 +49,9 @@ function docToIntegration(
     approval_status: d.approval_status ?? "none",
     approved_by: d.approved_by ?? null,
     approved_at: d.approved_at?.toDate?.() ?? null,
+    ghost_pr_session_id: d.ghost_pr_session_id ?? null,
+    ghost_pr_session_url: d.ghost_pr_session_url ?? null,
+    ghost_pr_url: d.ghost_pr_url ?? null,
     audit_session_id: d.audit_session_id ?? null,
     audit_session_url: d.audit_session_url ?? null,
     audit_status: d.audit_status ?? "none",
@@ -244,6 +247,9 @@ export async function addIntegration(data: {
       approval_status: "none",
       approved_by: null,
       approved_at: null,
+      ghost_pr_session_id: null,
+      ghost_pr_session_url: null,
+      ghost_pr_url: null,
       audit_session_id: null,
       audit_session_url: null,
       audit_status: "none",
@@ -579,6 +585,23 @@ export async function clearScoutRepos(): Promise<number> {
   }
 
   return deleted;
+}
+
+// ─── Ghost PR Tracking ──────────────────────────────────────────
+
+export async function updateGhostPrStatus(
+  id: string,
+  data: {
+    ghost_pr_session_id?: string | null;
+    ghost_pr_session_url?: string | null;
+    ghost_pr_url?: string | null;
+    approval_status?: Integration["approval_status"];
+  },
+): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+  await db.collection(INTEGRATIONS).doc(id).update(data);
+  return true;
 }
 
 // ─── Activity Log ────────────────────────────────────────────────

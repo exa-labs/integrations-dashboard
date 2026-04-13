@@ -19,7 +19,7 @@ import { AddIntegrationDialog } from "./AddIntegrationDialog";
 import { EditContextDialog } from "./EditContextDialog";
 import { IntegrationContextPanel } from "./IntegrationContextPanel";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { triggerAudit, checkAuditStatus, getIntegrationData } from "./actions";
+import { triggerAudit, triggerBulkAudit, triggerGhostPr, checkAuditStatus, getIntegrationData } from "./actions";
 import type {
   Integration,
   IntegrationHealth,
@@ -70,6 +70,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
   const [editTarget, setEditTarget] = useState<Integration | null>(null);
   const [auditLoading, setAuditLoading] = useState<string | null>(null);
   const [pollLoading, setPollLoading] = useState<string | null>(null);
+  const [bulkAuditLoading, setBulkAuditLoading] = useState(false);
   const [localIntegrations, setLocalIntegrations] = useState(integrations);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const localIntegrationsRef = useRef(localIntegrations);
@@ -131,6 +132,55 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }
     };
   }, [hasRunningAudits]);
+
+  const handleBulkAudit = useCallback(async () => {
+    if (bulkAuditLoading) return;
+    const count = localIntegrations.filter((i) => i.audit_status !== "running").length;
+    if (!confirm(`Trigger audits for ${count} integration(s)?`)) return;
+    setBulkAuditLoading(true);
+    try {
+      const result = await triggerBulkAudit();
+      if (result.success) {
+        // Refresh all integrations to reflect new audit status
+        const updated = await Promise.all(
+          localIntegrations.map((i) => getIntegrationData(i._id)),
+        );
+        setLocalIntegrations(
+          updated.filter((i): i is Integration => i !== null),
+        );
+        alert(
+          `Triggered ${result.triggered} audit(s)${result.skipped ? `, ${result.skipped} skipped (already running)` : ""}${result.errors.length ? `\nErrors: ${result.errors.join(", ")}` : ""}`,
+        );
+      } else {
+        alert(result.error ?? "Failed to trigger bulk audit");
+      }
+    } finally {
+      setBulkAuditLoading(false);
+    }
+  }, [bulkAuditLoading, localIntegrations]);
+
+  const [ghostPrLoading, setGhostPrLoading] = useState<string | null>(null);
+
+  const handleTriggerGhostPr = useCallback(async (integration: Integration) => {
+    if (ghostPrLoading) return;
+    setGhostPrLoading(integration._id);
+    try {
+      const result = await triggerGhostPr(integration._id);
+      if (result.success) {
+        const updated = await getIntegrationData(integration._id);
+        if (updated) {
+          setLocalIntegrations((prev) =>
+            prev.map((i) => (i._id === updated._id ? updated : i)),
+          );
+        }
+        alert(`Ghost PR session started: ${result.session_url}`);
+      } else {
+        alert(result.error ?? "Failed to start ghost PR");
+      }
+    } finally {
+      setGhostPrLoading(null);
+    }
+  }, [ghostPrLoading]);
 
   const handleTriggerAudit = useCallback(async (integration: Integration) => {
     if (auditLoading) return;
@@ -349,6 +399,40 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
                       Approve Update
                     </button>
                   )}
+                  {row.approval_status === "approved" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleTriggerGhostPr(row);
+                      }}
+                      disabled={ghostPrLoading === row._id}
+                      className="text-xs text-emerald-600 hover:text-emerald-800 disabled:opacity-50"
+                    >
+                      {ghostPrLoading === row._id ? "Starting..." : "Create PR"}
+                    </button>
+                  )}
+                  {row.approval_status === "in_progress" && row.ghost_pr_session_url && (
+                    <a
+                      href={row.ghost_pr_session_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs text-emerald-600 hover:text-emerald-800 underline"
+                    >
+                      PR in Progress
+                    </a>
+                  )}
+                  {row.ghost_pr_url && (
+                    <a
+                      href={row.ghost_pr_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs text-green-600 hover:text-green-800 underline"
+                    >
+                      View PR
+                    </a>
+                  )}
                 </>
               )}
               {row.audit_status === "running" ? (
@@ -392,7 +476,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
         },
       }),
     ],
-    [expandedRow, auditLoading, pollLoading, handleCheckStatus, handleTriggerAudit],
+    [expandedRow, auditLoading, pollLoading, ghostPrLoading, handleCheckStatus, handleTriggerAudit, handleTriggerGhostPr],
   );
 
   const table = useReactTable({
@@ -492,12 +576,21 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
             </button>
           ),
         )}
-        <button
-          onClick={() => setShowAddDialog(true)}
-          className="ml-auto rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
-        >
-          + Add Integration
-        </button>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={handleBulkAudit}
+            disabled={bulkAuditLoading || localIntegrations.length === 0}
+            className="rounded-md bg-purple-600 px-3 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+          >
+            {bulkAuditLoading ? "Auditing..." : "Audit All"}
+          </button>
+          <button
+            onClick={() => setShowAddDialog(true)}
+            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            + Add Integration
+          </button>
+        </div>
       </div>
 
       {/* Table */}

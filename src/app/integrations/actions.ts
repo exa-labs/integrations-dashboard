@@ -15,6 +15,7 @@ import {
   addActivityLogEntry,
   getSdkState,
   updateIntegrationAuditStatus,
+  updateGhostPrStatus,
   fetchAuditHistory,
   fetchActivityForIntegration,
 } from "@/lib/firebase-integrations";
@@ -23,7 +24,9 @@ import {
   completeAudit,
   spawnDevinSession,
   buildAuditPrompt,
+  buildGhostPrPrompt,
   AUDIT_STRUCTURED_OUTPUT_SCHEMA,
+  GHOST_PR_STRUCTURED_OUTPUT_SCHEMA,
 } from "@/lib/devin-session";
 import { getAllCronJobStates } from "@/lib/firebase-cron";
 import type {
@@ -406,6 +409,122 @@ export async function getIntegrationData(
   integrationId: string,
 ): Promise<Integration | null> {
   return getIntegration(integrationId);
+}
+
+// ─── Bulk Audit ─────────────────────────────────────────────────
+
+export async function triggerBulkAudit(): Promise<
+  ActionResult & { triggered: number; skipped: number; errors: string[] }
+> {
+  try {
+    const integrations = await fetchIntegrations();
+    const eligible = integrations.filter(
+      (i) => i.audit_status !== "running",
+    );
+    const skipped = integrations.length - eligible.length;
+
+    let triggered = 0;
+    const errors: string[] = [];
+
+    for (const integration of eligible) {
+      try {
+        const prompt = buildAuditPrompt(integration);
+        const session = await spawnDevinSession(
+          prompt,
+          `Audit: ${integration.name}`,
+          AUDIT_STRUCTURED_OUTPUT_SCHEMA,
+        );
+
+        await updateIntegrationAuditStatus(integration._id, "running", {
+          session_id: session.session_id,
+          session_url: session.url,
+        });
+
+        await addActivityLogEntry({
+          actor: "dashboard",
+          action: "audit_triggered",
+          target_type: "integration",
+          target_id: integration._id,
+          target_name: integration.name,
+          details: `Bulk audit session started: ${session.url}`,
+          pr_url: null,
+        });
+
+        triggered++;
+      } catch (err) {
+        errors.push(
+          `${integration.name}: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
+      }
+    }
+
+    return { success: true, triggered, skipped, errors };
+  } catch (error) {
+    console.error("[Integrations] triggerBulkAudit failed:", error);
+    return {
+      success: false,
+      triggered: 0,
+      skipped: 0,
+      errors: [error instanceof Error ? error.message : "Unknown error"],
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+// ─── Ghost-mode PR ──────────────────────────────────────────────
+
+export async function triggerGhostPr(
+  integrationId: string,
+): Promise<ActionResult & { session_id?: string; session_url?: string }> {
+  try {
+    if (!process.env.GHOST_GITHUB_TOKEN) {
+      return { success: false, error: "GHOST_GITHUB_TOKEN not configured" };
+    }
+
+    const integration = await getIntegration(integrationId);
+    if (!integration) {
+      return { success: false, error: "Integration not found" };
+    }
+
+    if (integration.approval_status !== "approved") {
+      return { success: false, error: "Integration must be approved before creating a ghost PR" };
+    }
+
+    const prompt = buildGhostPrPrompt(integration);
+    const session = await spawnDevinSession(
+      prompt,
+      `Ghost PR: ${integration.name}`,
+      GHOST_PR_STRUCTURED_OUTPUT_SCHEMA,
+    );
+
+    await updateGhostPrStatus(integrationId, {
+      ghost_pr_session_id: session.session_id,
+      ghost_pr_session_url: session.url,
+      approval_status: "in_progress",
+    });
+
+    await addActivityLogEntry({
+      actor: "dashboard",
+      action: "ghost_pr_started",
+      target_type: "integration",
+      target_id: integrationId,
+      target_name: integration.name,
+      details: `Ghost PR session started: ${session.url}`,
+      pr_url: null,
+    });
+
+    return {
+      success: true,
+      session_id: session.session_id,
+      session_url: session.url,
+    };
+  } catch (error) {
+    console.error("[Integrations] triggerGhostPr failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }
 
 // ─── Filtered fetches ────────────────────────────────────────────
