@@ -54,6 +54,7 @@ function docToIntegration(
     audit_status: d.audit_status ?? "none",
     audit_started_at: d.audit_started_at?.toDate?.() ?? null,
     audit_result: d.audit_result ?? null,
+    last_audit_completed_at: d.last_audit_completed_at?.toDate?.() ?? null,
   };
 }
 
@@ -384,6 +385,7 @@ export async function fetchAuditHistory(
       status: d.status ?? "completed",
       result: d.result ?? null,
       health_at_completion: d.health_at_completion ?? null,
+      triggered_by: d.triggered_by ?? "manual",
     };
   });
 }

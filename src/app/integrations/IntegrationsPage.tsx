@@ -12,6 +12,7 @@ import type {
   ScoutSummary,
   SdkState,
 } from "@/types/integrations";
+import type { CronJobState } from "@/types/cron";
 import { cx } from "@/lib/utils";
 
 type TabId = "manager" | "scout" | "activity";
@@ -20,6 +21,7 @@ interface Props {
   initialManager: {
     integrations: Integration[];
     sdkState: SdkState | null;
+    cronStates: CronJobState[];
   };
   initialScout: {
     repos: ScoutRepo[];
@@ -93,12 +95,14 @@ function IntegrationsPageInner({
         <ManagerTab
           integrations={initialManager.integrations}
           sdkState={initialManager.sdkState}
+          cronStates={initialManager.cronStates}
         />
       )}
       {activeTab === "scout" && (
         <ScoutTab
           repos={initialScout.repos}
           summary={initialScout.summary}
+          cronStates={initialManager.cronStates}
         />
       )}
       {activeTab === "activity" && (

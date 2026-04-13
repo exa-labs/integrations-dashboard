@@ -14,11 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { SummaryCard } from "@/components/ui/summary-card";
 import { MarkContactedDialog } from "./MarkContactedDialog";
 import { RepoDetailPanel } from "./RepoDetailPanel";
+import { formatRelativeTime } from "@/lib/utils";
 import type { ScoutRepo, ScoutScore, ScoutSummary } from "@/types/integrations";
+import type { CronJobState } from "@/types/cron";
 
 interface Props {
   repos: ScoutRepo[];
   summary: ScoutSummary;
+  cronStates: CronJobState[];
 }
 
 const scoreLabels: Record<ScoutScore, string> = {
@@ -29,7 +32,12 @@ const scoreLabels: Record<ScoutScore, string> = {
 
 const columnHelper = createColumnHelper<ScoutRepo>();
 
-export function ScoutTab({ repos, summary }: Props) {
+function isCronLocked(state: CronJobState): boolean {
+  return !!state.tick_lock_until && new Date(state.tick_lock_until) > new Date();
+}
+
+export function ScoutTab({ repos, summary, cronStates }: Props) {
+  const scoutCron = cronStates.find((c) => c.type === "scout");
   const [sorting, setSorting] = useState<SortingState>([
     { id: "score", desc: false },
   ]);
@@ -171,6 +179,32 @@ export function ScoutTab({ repos, summary }: Props) {
           color="yellow"
         />
       </div>
+
+      {/* Scout cron status */}
+      {scoutCron && (
+        <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600">
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                isCronLocked(scoutCron) ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+              }`}
+            />
+            <span className="font-medium">
+              {isCronLocked(scoutCron) ? "Scout Running" : "Scout Idle"}
+            </span>
+          </div>
+          {scoutCron.last_tick_at && (
+            <span className="text-xs text-gray-400">
+              Last run: {formatRelativeTime(new Date(scoutCron.last_tick_at))}
+            </span>
+          )}
+          {scoutCron.active_session_id && scoutCron.active_session_status === "running" && (
+            <span className="text-xs text-gray-500">
+              Session active
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-500">Filter:</span>

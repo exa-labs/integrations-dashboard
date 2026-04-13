@@ -560,6 +560,9 @@ function AuditHistoryTab({ history }: { history: AuditHistoryEntry[] }) {
                     {healthLabels[entry.health_at_completion]}
                   </Badge>
                 )}
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500">
+                  {entry.triggered_by === "cron" ? "Cron" : entry.triggered_by === "sdk_check" ? "SDK Check" : "Manual"}
+                </span>
                 <span className="text-xs text-gray-500">
                   {formatDateTime(entry.completed_at)}
                 </span>

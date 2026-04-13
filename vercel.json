@@ -5,7 +5,7 @@
       "schedule": "0 8 * * 1,3,5"
     },
     {
-      "path": "/api/cron/poll-audits",
+      "path": "/api/cron/orchestrator",
       "schedule": "*/5 * * * *"
     }
   ]

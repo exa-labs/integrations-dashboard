@@ -21,6 +21,8 @@ const actionLabels: Record<ActivityAction, string> = {
   update_approved: "approved update",
   audit_triggered: "triggered audit",
   audit_completed: "audit completed",
+  scout_started: "started scout discovery",
+  scout_completed: "scout discovery completed",
   note: "added note",
 };
 
@@ -33,6 +35,8 @@ const actionDotColors: Record<ActivityAction, string> = {
   update_approved: "bg-indigo-500",
   audit_triggered: "bg-purple-500",
   audit_completed: "bg-purple-500",
+  scout_started: "bg-teal-500",
+  scout_completed: "bg-teal-500",
   outreach_responded: "bg-purple-500",
   status_change: "bg-gray-400",
   note: "bg-gray-400",

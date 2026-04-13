@@ -18,7 +18,7 @@ import { ApproveUpdateDialog } from "./ApproveUpdateDialog";
 import { AddIntegrationDialog } from "./AddIntegrationDialog";
 import { EditContextDialog } from "./EditContextDialog";
 import { IntegrationContextPanel } from "./IntegrationContextPanel";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { triggerAudit, checkAuditStatus, getIntegrationData } from "./actions";
 import type {
   Integration,
@@ -26,10 +26,12 @@ import type {
   AuditStatus,
   SdkState,
 } from "@/types/integrations";
+import type { CronJobState } from "@/types/cron";
 
 interface Props {
   integrations: Integration[];
   sdkState: SdkState | null;
+  cronStates: CronJobState[];
 }
 
 const healthLabels: Record<IntegrationHealth, string> = {
@@ -47,7 +49,12 @@ const auditStatusLabels: Record<AuditStatus, string> = {
 
 const columnHelper = createColumnHelper<Integration>();
 
-export function ManagerTab({ integrations, sdkState }: Props) {
+function isCronLocked(state: CronJobState): boolean {
+  return !!state.tick_lock_until && new Date(state.tick_lock_until) > new Date();
+}
+
+export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
+  const auditCron = cronStates.find((c) => c.type === "audit");
   const [sorting, setSorting] = useState<SortingState>([
     { id: "health", desc: false },
   ]);
@@ -419,6 +426,30 @@ export function ManagerTab({ integrations, sdkState }: Props) {
           color="yellow"
         />
       </div>
+
+      {/* Cron status bar */}
+      {auditCron && (
+        <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600">
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                isCronLocked(auditCron) ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+              }`}
+            />
+            <span className="font-medium">
+              {isCronLocked(auditCron) ? "Cron Running" : "Cron Idle"}
+            </span>
+          </div>
+          {auditCron.last_tick_at && (
+            <span className="text-xs text-gray-400">
+              Last tick: {formatRelativeTime(new Date(auditCron.last_tick_at))}
+            </span>
+          )}
+          <span className="ml-auto text-xs text-gray-400">
+            Cooldown: {auditCron.cooldown_minutes}min · {auditCron.total_sessions_spawned} sessions spawned
+          </span>
+        </div>
+      )}
 
       {/* SDK state bar */}
       {sdkState && (

@@ -15,10 +15,17 @@ import {
   addActivityLogEntry,
   getSdkState,
   updateIntegrationAuditStatus,
-  addAuditHistoryEntry,
   fetchAuditHistory,
   fetchActivityForIntegration,
 } from "@/lib/firebase-integrations";
+import {
+  pollDevinSession,
+  completeAudit,
+  spawnDevinSession,
+  buildAuditPrompt,
+  AUDIT_STRUCTURED_OUTPUT_SCHEMA,
+} from "@/lib/devin-session";
+import { getAllCronJobStates } from "@/lib/firebase-cron";
 import type {
   Integration,
   IntegrationType,
@@ -32,6 +39,7 @@ import type {
   IntegrationHealth,
   ActivityAction,
 } from "@/types/integrations";
+import type { CronJobState } from "@/types/cron";
 
 export type {
   Integration,
@@ -40,6 +48,7 @@ export type {
   ManagerSummary,
   ScoutSummary,
   SdkState,
+  CronJobState,
 };
 
 interface ActionResult {
@@ -52,12 +61,14 @@ interface ActionResult {
 export async function getInitialManagerData(): Promise<{
   integrations: Integration[];
   sdkState: SdkState | null;
+  cronStates: CronJobState[];
 }> {
-  const [integrations, sdkState] = await Promise.all([
+  const [integrations, sdkState, cronStates] = await Promise.all([
     fetchIntegrations(),
     getSdkState(),
+    getAllCronJobStates(),
   ]);
-  return { integrations, sdkState };
+  return { integrations, sdkState, cronStates };
 }
 
 export async function getInitialScoutData(): Promise<{
@@ -283,63 +294,12 @@ export async function removeIntegration(
   }
 }
 
-// ─── Audit actions (direct Devin API + Firebase, no HTTP round-trip) ─────
-
-function buildAuditPrompt(integration: Integration): string {
-  const ctx = integration.update_context;
-  const lines = [
-    `# Audit: ${integration.name} (${integration.slug})`,
-    "",
-    `**Type:** ${integration.type}`,
-    `**Repo:** ${integration.repo}`,
-    ctx.external_repo ? `**External Repo:** ${ctx.external_repo}` : null,
-    `**Current SDK Version:** ${integration.current_sdk_version ?? "unknown"}`,
-    `**Latest SDK Version:** ${integration.latest_sdk_version ?? "unknown"}`,
-    "",
-    "## Context",
-    ctx.notes || "(no notes)",
-    "",
-    "## Key Files",
-    ctx.key_files.length > 0
-      ? ctx.key_files.map((f) => `- ${f}`).join("\n")
-      : "(none specified)",
-    "",
-    "## Commands",
-    ctx.build_cmd ? `- **Build:** \`${ctx.build_cmd}\`` : null,
-    ctx.test_cmd ? `- **Test:** \`${ctx.test_cmd}\`` : null,
-    ctx.publish_cmd ? `- **Publish:** \`${ctx.publish_cmd}\`` : null,
-    "",
-    integration.missing_features.length > 0
-      ? `## Missing Features\n${integration.missing_features.map((f) => `- ${f}`).join("\n")}`
-      : null,
-    "",
-    "## Task",
-    "1. Clone the repository and check the current state of the integration.",
-    "2. Check which version of the Exa SDK (exa-py or exa-js) is being used, if any.",
-    "3. Compare against the latest published SDK version on PyPI/npm.",
-    "4. Check if any new Exa API features are missing from this integration.",
-    "5. Report your findings using the structured output schema.",
-    "",
-    "## Structured Output",
-    "You MUST provide structured output with these fields:",
-    "- `health`: one of 'healthy', 'outdated', 'needs_audit'",
-    "- `current_sdk_version`: the version currently used (string or null)",
-    "- `latest_sdk_version`: the latest available version (string or null)",
-    "- `missing_features`: array of missing feature names",
-    "- `summary`: a brief summary of the audit findings",
-  ];
-  return lines.filter((l) => l !== null).join("\n");
-}
+// ─── Audit actions (uses shared devin-session helpers) ─────────────────
 
 export async function triggerAudit(
   integrationId: string,
 ): Promise<ActionResult & { session_id?: string; session_url?: string }> {
   try {
-    const devinApiKey = process.env.DEVIN_API_KEY;
-    if (!devinApiKey) {
-      return { success: false, error: "DEVIN_API_KEY not configured" };
-    }
-
     const integration = await getIntegration(integrationId);
     if (!integration) {
       return { success: false, error: "Integration not found" };
@@ -355,50 +315,15 @@ export async function triggerAudit(
     }
 
     const prompt = buildAuditPrompt(integration);
-
-    const devinResponse = await fetch("https://api.devin.ai/v1/sessions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${devinApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        prompt,
-        title: `Audit: ${integration.name}`,
-        structured_output_schema: {
-          type: "object",
-          properties: {
-            health: {
-              type: "string",
-              enum: ["healthy", "outdated", "needs_audit"],
-            },
-            current_sdk_version: { type: ["string", "null"] },
-            latest_sdk_version: { type: ["string", "null"] },
-            missing_features: {
-              type: "array",
-              items: { type: "string" },
-            },
-            summary: { type: "string" },
-          },
-          required: ["health", "summary"],
-        },
-      }),
-    });
-
-    if (!devinResponse.ok) {
-      const errorText = await devinResponse.text();
-      console.error("[Audit] Devin API error:", errorText);
-      return { success: false, error: `Devin API error: ${devinResponse.status}` };
-    }
-
-    const devinData = (await devinResponse.json()) as {
-      session_id: string;
-      url: string;
-    };
+    const session = await spawnDevinSession(
+      prompt,
+      `Audit: ${integration.name}`,
+      AUDIT_STRUCTURED_OUTPUT_SCHEMA,
+    );
 
     await updateIntegrationAuditStatus(integrationId, "running", {
-      session_id: devinData.session_id,
-      session_url: devinData.url,
+      session_id: session.session_id,
+      session_url: session.url,
     });
 
     await addActivityLogEntry({
@@ -407,14 +332,14 @@ export async function triggerAudit(
       target_type: "integration",
       target_id: integrationId,
       target_name: integration.name,
-      details: `Audit session started: ${devinData.url}`,
+      details: `Audit session started: ${session.url}`,
       pr_url: null,
     });
 
     return {
       success: true,
-      session_id: devinData.session_id,
-      session_url: devinData.url,
+      session_id: session.session_id,
+      session_url: session.url,
     };
   } catch (error) {
     console.error("[Integrations] triggerAudit failed:", error);
@@ -425,23 +350,10 @@ export async function triggerAudit(
   }
 }
 
-interface AuditResult {
-  health: IntegrationHealth;
-  current_sdk_version?: string | null;
-  latest_sdk_version?: string | null;
-  missing_features?: string[];
-  summary: string;
-}
-
 export async function checkAuditStatus(
   integrationId: string,
 ): Promise<ActionResult & { audit_status?: string; result?: unknown; session_url?: string }> {
   try {
-    const devinApiKey = process.env.DEVIN_API_KEY;
-    if (!devinApiKey) {
-      return { success: false, error: "DEVIN_API_KEY not configured" };
-    }
-
     const integration = await getIntegration(integrationId);
     if (!integration) {
       return { success: false, error: "Integration not found" };
@@ -464,126 +376,14 @@ export async function checkAuditStatus(
       };
     }
 
-    const devinResponse = await fetch(
-      `https://api.devin.ai/v1/session/${integration.audit_session_id}`,
-      {
-        headers: { Authorization: `Bearer ${devinApiKey}` },
-      },
-    );
+    const sessionState = await pollDevinSession(integration.audit_session_id);
 
-    if (!devinResponse.ok) {
-      const errorText = await devinResponse.text();
-      console.error("[Audit Status] Devin API error:", errorText);
-      return { success: false, error: `Devin API error: ${devinResponse.status}` };
-    }
-
-    const session = (await devinResponse.json()) as {
-      session_id: string;
-      status: string;
-      status_enum: string;
-      structured_output: Record<string, unknown> | null;
-    };
-
-    // Devin sessions can end in several states:
-    // - "stopped"/"finished" = terminal
-    // - "blocked" ("awaiting instructions") = session done with work, has structured output
-    const isTerminal =
-      session.status_enum === "stopped" ||
-      session.status_enum === "finished" ||
-      session.status === "finished" ||
-      session.status === "stopped";
-
-    const isBlocked =
-      session.status_enum === "blocked" || session.status === "blocked";
-
-    const isFinished = isTerminal || (isBlocked && session.structured_output !== null);
-
-    const isFailed =
-      session.status_enum === "failed" || session.status === "failed";
-
-    if (isFailed) {
-      await updateIntegrationAuditStatus(integrationId, "failed", {
-        result: JSON.stringify({ summary: "Audit session failed" }),
-      });
-      await addAuditHistoryEntry(integrationId, {
-        session_id: integration.audit_session_id ?? "",
-        session_url: integration.audit_session_url ?? "",
-        started_at: integration.audit_started_at ?? null,
-        completed_at: new Date(),
-        status: "failed",
-        result: JSON.stringify({ summary: "Audit session failed" }),
-        health_at_completion: integration.health,
-      });
-      await addActivityLogEntry({
-        actor: "system",
-        action: "audit_completed",
-        target_type: "integration",
-        target_id: integrationId,
-        target_name: integration.name,
-        details: "Audit session failed",
-        pr_url: null,
-      });
-      return { success: true, audit_status: "failed" };
-    }
-
-    if (isFinished) {
-      const auditResult = session.structured_output as AuditResult | null;
-
-      if (auditResult) {
-        const healthUpdate: Record<string, unknown> = {};
-        if (auditResult.current_sdk_version !== undefined) {
-          healthUpdate.current_sdk_version = auditResult.current_sdk_version;
-        }
-        if (auditResult.latest_sdk_version !== undefined) {
-          healthUpdate.latest_sdk_version = auditResult.latest_sdk_version;
-        }
-        if (auditResult.missing_features !== undefined) {
-          healthUpdate.missing_features = auditResult.missing_features;
-        }
-        if (auditResult.health === "outdated") {
-          healthUpdate.outdated_since = new Date();
-        }
-        await updateIntegrationHealth(
-          integrationId,
-          auditResult.health,
-          healthUpdate,
-        );
-      }
-
-      const resultJson = auditResult
-        ? JSON.stringify(auditResult)
-        : JSON.stringify({ summary: "Session completed without structured output" });
-
-      await updateIntegrationAuditStatus(integrationId, "completed", {
-        result: resultJson,
-      });
-
-      await addAuditHistoryEntry(integrationId, {
-        session_id: integration.audit_session_id ?? "",
-        session_url: integration.audit_session_url ?? "",
-        started_at: integration.audit_started_at ?? null,
-        completed_at: new Date(),
-        status: "completed",
-        result: resultJson,
-        health_at_completion: auditResult?.health ?? integration.health,
-      });
-
-      await addActivityLogEntry({
-        actor: "system",
-        action: "audit_completed",
-        target_type: "integration",
-        target_id: integrationId,
-        target_name: integration.name,
-        details: auditResult
-          ? `Audit completed: ${auditResult.health} — ${auditResult.summary}`
-          : "Audit completed (no structured output)",
-        pr_url: null,
-      });
-
+    if (sessionState.isFailed || sessionState.isFinished) {
+      await completeAudit(integration, sessionState, "manual");
       return {
         success: true,
-        audit_status: "completed",
-        result: auditResult ?? null,
+        audit_status: sessionState.isFailed ? "failed" : "completed",
+        result: sessionState.structured_output ?? null,
       };
     }
 

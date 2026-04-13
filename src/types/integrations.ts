@@ -25,6 +25,8 @@ export type ActivityAction =
   | "update_approved"
   | "audit_triggered"
   | "audit_completed"
+  | "scout_started"
+  | "scout_completed"
   | "note";
 
 export interface IntegrationUpdateContext {
@@ -58,6 +60,7 @@ export interface Integration {
   audit_status: AuditStatus;
   audit_started_at: Date | null;
   audit_result: string | null;
+  last_audit_completed_at: Date | null;
 }
 
 export interface ScoutRepo {
@@ -90,6 +93,8 @@ export interface ActivityLogEntry {
   created_at: Date;
 }
 
+export type AuditTriggerSource = "manual" | "cron" | "sdk_check";
+
 export interface AuditHistoryEntry {
   _id: string;
   session_id: string;
@@ -99,6 +104,7 @@ export interface AuditHistoryEntry {
   status: AuditStatus;
   result: string | null;
   health_at_completion: IntegrationHealth | null;
+  triggered_by: AuditTriggerSource;
 }
 
 export interface SdkState {
