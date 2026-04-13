@@ -25,6 +25,17 @@ export function RepoDetailPanel({ repo }: Props) {
         </div>
       )}
 
+      {repo.integration_opportunity && (
+        <div>
+          <p className="text-xs font-medium text-gray-500">
+            Integration Opportunity
+          </p>
+          <p className="text-sm text-gray-700">
+            {repo.integration_opportunity}
+          </p>
+        </div>
+      )}
+
       {repo.integration_pattern && (
         <div>
           <p className="text-xs font-medium text-gray-500">
@@ -51,6 +62,15 @@ export function RepoDetailPanel({ repo }: Props) {
                 @{r}
               </a>
             ))}
+          </div>
+        </div>
+      )}
+
+      {repo.outreach_note && (
+        <div>
+          <p className="text-xs font-medium text-gray-500">Outreach Note</p>
+          <div className="mt-1 rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700">
+            {repo.outreach_note}
           </div>
         </div>
       )}

@@ -6,6 +6,7 @@ export type IntegrationType =
   | "sheets"
   | "other";
 export type ScoutScore = "strong" | "medium" | "weak";
+export type ExaFit = "strong" | "medium";
 export type OutreachStatus =
   | "pending"
   | "contacted"
@@ -70,12 +71,16 @@ export interface ScoutRepo {
   stars: number;
   star_velocity: number;
   score: ScoutScore;
+  exa_fit: ExaFit | null;
+  current_search_tool: string | null;
   uses_search: string | null;
   readme_summary: string;
   integration_pattern: string | null;
+  integration_opportunity: string | null;
   key_reviewers: string[];
   outreach_status: OutreachStatus;
   outreach_draft: string | null;
+  outreach_note: string | null;
   discovered_at: Date;
   contacted_at: Date | null;
   contacted_by: string | null;
