@@ -500,6 +500,7 @@ export async function triggerGhostPr(
     await updateGhostPrStatus(integrationId, {
       ghost_pr_session_id: session.session_id,
       ghost_pr_session_url: session.url,
+      ghost_pr_started_at: new Date(),
       approval_status: "in_progress",
     });
 

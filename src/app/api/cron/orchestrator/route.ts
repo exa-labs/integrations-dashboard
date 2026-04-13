@@ -433,6 +433,27 @@ async function processGhostPrPolling(): Promise<GhostPrTickResult> {
 
   for (const integration of inProgress) {
     try {
+      // Check for stuck sessions first (same 2-hour timeout as audits)
+      if (isSessionStuck(integration.ghost_pr_started_at)) {
+        await updateGhostPrStatus(integration._id, {
+          approval_status: "approved",
+          ghost_pr_session_id: null,
+          ghost_pr_session_url: null,
+          ghost_pr_started_at: null,
+        });
+        await addActivityLogEntry({
+          actor: "cron/orchestrator",
+          action: "ghost_pr_completed",
+          target_type: "integration",
+          target_id: integration._id,
+          target_name: integration.name,
+          details: "Ghost PR session timed out after 2 hours — reset to approved for retry",
+          pr_url: null,
+        });
+        result.failed++;
+        continue;
+      }
+
       const sessionState = await pollDevinSession(integration.ghost_pr_session_id!);
       result.polled++;
 

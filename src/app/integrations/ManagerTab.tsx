@@ -422,18 +422,18 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
                       PR in Progress
                     </a>
                   )}
-                  {row.ghost_pr_url && (
-                    <a
-                      href={row.ghost_pr_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-xs text-green-600 hover:text-green-800 underline"
-                    >
-                      View PR
-                    </a>
-                  )}
                 </>
+              )}
+              {row.ghost_pr_url && (
+                <a
+                  href={row.ghost_pr_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs text-green-600 hover:text-green-800 underline"
+                >
+                  View PR
+                </a>
               )}
               {row.audit_status === "running" ? (
                 <>

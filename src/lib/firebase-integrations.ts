@@ -52,6 +52,7 @@ function docToIntegration(
     ghost_pr_session_id: d.ghost_pr_session_id ?? null,
     ghost_pr_session_url: d.ghost_pr_session_url ?? null,
     ghost_pr_url: d.ghost_pr_url ?? null,
+    ghost_pr_started_at: d.ghost_pr_started_at?.toDate?.() ?? null,
     audit_session_id: d.audit_session_id ?? null,
     audit_session_url: d.audit_session_url ?? null,
     audit_status: d.audit_status ?? "none",
@@ -250,6 +251,7 @@ export async function addIntegration(data: {
       ghost_pr_session_id: null,
       ghost_pr_session_url: null,
       ghost_pr_url: null,
+      ghost_pr_started_at: null,
       audit_session_id: null,
       audit_session_url: null,
       audit_status: "none",
@@ -595,6 +597,7 @@ export async function updateGhostPrStatus(
     ghost_pr_session_id?: string | null;
     ghost_pr_session_url?: string | null;
     ghost_pr_url?: string | null;
+    ghost_pr_started_at?: Date | null;
     approval_status?: Integration["approval_status"];
   },
 ): Promise<boolean> {

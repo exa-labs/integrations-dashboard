@@ -61,6 +61,7 @@ export interface Integration {
   ghost_pr_session_id: string | null;
   ghost_pr_session_url: string | null;
   ghost_pr_url: string | null;
+  ghost_pr_started_at: Date | null;
   audit_session_id: string | null;
   audit_session_url: string | null;
   audit_status: AuditStatus;
