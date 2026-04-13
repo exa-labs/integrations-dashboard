@@ -6,6 +6,7 @@ import {
   getSdkState,
   updateSdkState,
 } from "@/lib/firebase-integrations";
+import { notifyStaleIntegrations } from "@/lib/slack";
 
 function isCronAuthorized(req: NextRequest): boolean {
   const authHeader = req.headers.get("authorization");
@@ -70,6 +71,12 @@ export async function GET(req: NextRequest) {
     // 3. Check each integration's SDK version against latest
     const integrations = await fetchIntegrations();
     let markedOutdated = 0;
+    const newlyOutdated: Array<{
+      name: string;
+      slug: string;
+      current_sdk_version: string | null;
+      latest_sdk_version: string | null;
+    }> = [];
 
     for (const integration of integrations) {
       if (!integration.current_sdk_version) continue;
@@ -79,7 +86,24 @@ export async function GET(req: NextRequest) {
       const latestVersion = isPython ? exaPyVersion : isTypescript ? exaJsVersion : null;
 
       if (!latestVersion) continue;
-      if (integration.current_sdk_version === latestVersion) continue;
+      if (integration.current_sdk_version === latestVersion) {
+        // Version matches latest — mark healthy if currently outdated
+        if (integration.health === "outdated") {
+          await updateIntegrationHealth(integration._id, "healthy", {
+            latest_sdk_version: latestVersion,
+          });
+          await addActivityLogEntry({
+            actor: "cron/sdk-check",
+            action: "mark_fixed",
+            target_type: "integration",
+            target_id: integration._id,
+            target_name: integration.name,
+            details: `SDK version ${integration.current_sdk_version} matches latest — auto-resolved`,
+            pr_url: null,
+          });
+        }
+        continue;
+      }
       if (integration.health === "outdated") {
         // Already marked, just update latest_sdk_version if changed
         if (integration.latest_sdk_version !== latestVersion) {
@@ -106,7 +130,21 @@ export async function GET(req: NextRequest) {
         pr_url: null,
       });
 
+      newlyOutdated.push({
+        name: integration.name,
+        slug: integration.slug,
+        current_sdk_version: integration.current_sdk_version,
+        latest_sdk_version: latestVersion,
+      });
+
       markedOutdated++;
+    }
+
+    // Slack notify for newly outdated integrations
+    if (newlyOutdated.length > 0) {
+      await notifyStaleIntegrations(newlyOutdated).catch((e) =>
+        console.error("[Cron SDK Check] Slack notify error:", e),
+      );
     }
 
     return NextResponse.json({

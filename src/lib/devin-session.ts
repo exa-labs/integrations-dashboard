@@ -443,6 +443,75 @@ export const SCOUT_STRUCTURED_OUTPUT_SCHEMA = {
   required: ["repos", "summary"],
 };
 
+// ─── Ghost-mode PR Prompt Builder ────────────────────────────────
+
+export function buildGhostPrPrompt(integration: Integration): string {
+  const ctx = integration.update_context;
+  const lines = [
+    `# Ghost-mode PR: Update ${integration.name} (${integration.slug})`,
+    "",
+    "## CRITICAL: Ghost Mode Rules",
+    "You are creating a PR that MUST appear as if a human wrote it.",
+    "- Do NOT mention Devin, AI, automation, bots, or any non-human involvement in commit messages, PR title, PR description, or code comments.",
+    "- Write commit messages in a natural human style (e.g. 'update exa-py to v1.2.3', 'bump SDK version').",
+    "- Write the PR description as a normal developer would — brief, to the point, referencing the changes.",
+    "- Do NOT add any AI-generated comments, annotations, or explanations in the code.",
+    "- Use the GHOST_GITHUB_TOKEN environment variable for all git operations (clone, push, PR creation).",
+    "",
+    `**Type:** ${integration.type}`,
+    `**Repo:** ${integration.repo}`,
+    ctx.external_repo ? `**External Repo:** ${ctx.external_repo}` : null,
+    `**Current SDK Version:** ${integration.current_sdk_version ?? "unknown"}`,
+    `**Latest SDK Version:** ${integration.latest_sdk_version ?? "unknown"}`,
+    "",
+    "## Context",
+    ctx.notes || "(no notes)",
+    "",
+    "## Key Files",
+    ctx.key_files.length > 0
+      ? ctx.key_files.map((f) => `- ${f}`).join("\n")
+      : "(none specified)",
+    "",
+    "## Commands",
+    ctx.build_cmd ? `- **Build:** \`${ctx.build_cmd}\`` : null,
+    ctx.test_cmd ? `- **Test:** \`${ctx.test_cmd}\`` : null,
+    ctx.publish_cmd ? `- **Publish:** \`${ctx.publish_cmd}\`` : null,
+    "",
+    integration.missing_features.length > 0
+      ? `## Missing Features\n${integration.missing_features.map((f) => `- ${f}`).join("\n")}`
+      : null,
+    "",
+    "## Task",
+    "1. Clone the repository using the GHOST_GITHUB_TOKEN for authentication.",
+    "2. Create a new branch with a human-style name (e.g. 'update-exa-sdk-v1.2.3').",
+    `3. Update the Exa SDK from ${integration.current_sdk_version ?? "current"} to ${integration.latest_sdk_version ?? "latest"}.`,
+    "4. Run the build and test commands to verify the update works.",
+    "5. Fix any breaking changes if needed.",
+    "6. Commit with a natural human-style message.",
+    "7. Push and create a PR using the GHOST_GITHUB_TOKEN.",
+    "8. Report the PR URL in structured output.",
+    "",
+    "## Structured Output",
+    "You MUST provide structured output with these fields:",
+    "- `pr_url`: the URL of the created PR (string or null if failed)",
+    "- `branch`: the branch name used",
+    "- `summary`: brief description of what was done",
+    "- `success`: boolean indicating if the PR was created successfully",
+  ];
+  return lines.filter((l) => l !== null).join("\n");
+}
+
+export const GHOST_PR_STRUCTURED_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    pr_url: { type: ["string", "null"] },
+    branch: { type: "string" },
+    summary: { type: "string" },
+    success: { type: "boolean" },
+  },
+  required: ["summary", "success"],
+};
+
 // ─── Stuck Session Detection ─────────────────────────────────────
 
 const STUCK_SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
