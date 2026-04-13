@@ -83,6 +83,94 @@ export function IntegrationContextPanel({ integration }: Props) {
           </a>
         </div>
       )}
+
+      {/* Audit result */}
+      {integration.audit_result && (() => {
+        try {
+          const result = JSON.parse(integration.audit_result) as {
+            health?: string;
+            current_sdk_version?: string | null;
+            latest_sdk_version?: string | null;
+            missing_features?: string[];
+            summary?: string;
+          };
+          return (
+            <div className="rounded-md border border-gray-200 bg-white p-3">
+              <p className="text-xs font-medium text-gray-500 mb-2">
+                Last Audit Result
+              </p>
+              {result.summary && (
+                <p className="text-sm text-gray-700 mb-2">{result.summary}</p>
+              )}
+              <div className="flex flex-wrap gap-4 text-xs text-gray-600">
+                {result.health && (
+                  <span>
+                    Health:{" "}
+                    <span
+                      className={
+                        result.health === "healthy"
+                          ? "text-green-600 font-medium"
+                          : result.health === "outdated"
+                            ? "text-red-600 font-medium"
+                            : "text-yellow-600 font-medium"
+                      }
+                    >
+                      {result.health}
+                    </span>
+                  </span>
+                )}
+                {result.current_sdk_version && (
+                  <span>
+                    SDK: <span className="font-mono">{result.current_sdk_version}</span>
+                    {result.latest_sdk_version &&
+                      result.current_sdk_version !== result.latest_sdk_version && (
+                        <span className="text-red-500 ml-1">
+                          → {result.latest_sdk_version}
+                        </span>
+                      )}
+                  </span>
+                )}
+              </div>
+              {result.missing_features && result.missing_features.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs text-gray-500">Missing Features:</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {result.missing_features.map((f) => (
+                      <span
+                        key={f}
+                        className="rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700"
+                      >
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        } catch {
+          return null;
+        }
+      })()}
+
+      {/* Audit session link */}
+      {integration.audit_session_url && (
+        <div className="flex items-center gap-2">
+          <a
+            href={integration.audit_session_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-purple-600 hover:underline"
+          >
+            View Audit Session →
+          </a>
+          {integration.audit_started_at && (
+            <span className="text-xs text-gray-400">
+              Started {new Date(integration.audit_started_at).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

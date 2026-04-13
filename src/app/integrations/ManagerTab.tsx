@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
+import Link from "next/link";
 import {
   useReactTable,
   getCoreRowModel,
@@ -17,20 +18,20 @@ import { ApproveUpdateDialog } from "./ApproveUpdateDialog";
 import { AddIntegrationDialog } from "./AddIntegrationDialog";
 import { EditContextDialog } from "./EditContextDialog";
 import { IntegrationContextPanel } from "./IntegrationContextPanel";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatRelativeTime } from "@/lib/utils";
 import { triggerAudit, checkAuditStatus, getIntegrationData } from "./actions";
 import type {
   Integration,
   IntegrationHealth,
   AuditStatus,
-  ManagerSummary,
   SdkState,
 } from "@/types/integrations";
+import type { CronJobState } from "@/types/cron";
 
 interface Props {
   integrations: Integration[];
-  summary: ManagerSummary;
   sdkState: SdkState | null;
+  cronStates: CronJobState[];
 }
 
 const healthLabels: Record<IntegrationHealth, string> = {
@@ -48,7 +49,12 @@ const auditStatusLabels: Record<AuditStatus, string> = {
 
 const columnHelper = createColumnHelper<Integration>();
 
-export function ManagerTab({ integrations, summary, sdkState }: Props) {
+function isCronLocked(state: CronJobState): boolean {
+  return !!state.tick_lock_until && new Date(state.tick_lock_until) > new Date();
+}
+
+export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
+  const auditCron = cronStates.find((c) => c.type === "audit");
   const [sorting, setSorting] = useState<SortingState>([
     { id: "health", desc: false },
   ]);
@@ -65,10 +71,66 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
   const [auditLoading, setAuditLoading] = useState<string | null>(null);
   const [pollLoading, setPollLoading] = useState<string | null>(null);
   const [localIntegrations, setLocalIntegrations] = useState(integrations);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const localIntegrationsRef = useRef(localIntegrations);
+  localIntegrationsRef.current = localIntegrations;
 
   useEffect(() => {
     setLocalIntegrations(integrations);
   }, [integrations]);
+
+  // Auto-poll running audits every 30s
+  const hasRunningAudits = useMemo(
+    () => localIntegrations.some((i) => i.audit_status === "running"),
+    [localIntegrations],
+  );
+
+  useEffect(() => {
+    if (!hasRunningAudits) {
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    const poll = async () => {
+      const running = localIntegrationsRef.current.filter(
+        (i) => i.audit_status === "running",
+      );
+      for (const integration of running) {
+        if (cancelled) return;
+        const result = await checkAuditStatus(integration._id);
+        if (
+          result.success &&
+          (result.audit_status === "completed" || result.audit_status === "failed")
+        ) {
+          const updated = await getIntegrationData(integration._id);
+          if (updated) {
+            setLocalIntegrations((prev) =>
+              prev.map((i) => (i._id === integration._id ? updated : i)),
+            );
+          }
+        }
+      }
+      if (!cancelled) {
+        pollTimerRef.current = setTimeout(poll, 30_000);
+      }
+    };
+
+    // Start first poll after 30s delay
+    pollTimerRef.current = setTimeout(poll, 30_000);
+
+    return () => {
+      cancelled = true;
+      if (pollTimerRef.current) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, [hasRunningAudits]);
 
   const handleTriggerAudit = useCallback(async (integration: Integration) => {
     if (auditLoading) return;
@@ -131,9 +193,13 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
         header: "Integration",
         cell: (info) => (
           <div>
-            <span className="font-medium text-gray-900">
+            <Link
+              href={`/integrations/${info.row.original._id}`}
+              className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
               {info.getValue()}
-            </span>
+            </Link>
             <span className="ml-2 text-xs text-gray-400">
               {info.row.original.type}
             </span>
@@ -163,7 +229,8 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
         cell: (info) => {
           const current = info.getValue();
           const latest = info.row.original.latest_sdk_version;
-          if (!current) return <span className="text-gray-400">—</span>;
+          if (!current)
+            return <span className="text-xs text-gray-400 italic">No SDK dependency</span>;
           return (
             <span className="font-mono text-sm">
               {current}
@@ -340,17 +407,49 @@ export function ManagerTab({ integrations, summary, sdkState }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Summary cards */}
+      {/* Summary cards — recomputed from local state */}
       <div className="grid grid-cols-4 gap-4">
-        <SummaryCard label="Total" value={summary.total} />
-        <SummaryCard label="Outdated" value={summary.outdated} color="red" />
-        <SummaryCard label="Healthy" value={summary.healthy} color="green" />
+        <SummaryCard label="Total" value={localIntegrations.length} />
+        <SummaryCard
+          label="Outdated"
+          value={localIntegrations.filter((i) => i.health === "outdated").length}
+          color="red"
+        />
+        <SummaryCard
+          label="Healthy"
+          value={localIntegrations.filter((i) => i.health === "healthy").length}
+          color="green"
+        />
         <SummaryCard
           label="Needs Audit"
-          value={summary.needs_audit}
+          value={localIntegrations.filter((i) => i.health === "needs_audit").length}
           color="yellow"
         />
       </div>
+
+      {/* Cron status bar */}
+      {auditCron && (
+        <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600">
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                isCronLocked(auditCron) ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+              }`}
+            />
+            <span className="font-medium">
+              {isCronLocked(auditCron) ? "Cron Running" : "Cron Idle"}
+            </span>
+          </div>
+          {auditCron.last_tick_at && (
+            <span className="text-xs text-gray-400">
+              Last tick: {formatRelativeTime(new Date(auditCron.last_tick_at))}
+            </span>
+          )}
+          <span className="ml-auto text-xs text-gray-400">
+            Cooldown: {auditCron.cooldown_minutes}min · {auditCron.total_sessions_spawned} sessions spawned
+          </span>
+        </div>
+      )}
 
       {/* SDK state bar */}
       {sdkState && (

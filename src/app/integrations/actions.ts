@@ -14,19 +14,32 @@ import {
   fetchActivityLog,
   addActivityLogEntry,
   getSdkState,
+  updateIntegrationAuditStatus,
+  fetchAuditHistory,
+  fetchActivityForIntegration,
 } from "@/lib/firebase-integrations";
+import {
+  pollDevinSession,
+  completeAudit,
+  spawnDevinSession,
+  buildAuditPrompt,
+  AUDIT_STRUCTURED_OUTPUT_SCHEMA,
+} from "@/lib/devin-session";
+import { getAllCronJobStates } from "@/lib/firebase-cron";
 import type {
   Integration,
   IntegrationType,
   IntegrationUpdateContext,
   ScoutRepo,
   ActivityLogEntry,
+  AuditHistoryEntry,
   ManagerSummary,
   ScoutSummary,
   SdkState,
   IntegrationHealth,
   ActivityAction,
 } from "@/types/integrations";
+import type { CronJobState } from "@/types/cron";
 
 export type {
   Integration,
@@ -35,6 +48,7 @@ export type {
   ManagerSummary,
   ScoutSummary,
   SdkState,
+  CronJobState,
 };
 
 interface ActionResult {
@@ -46,20 +60,15 @@ interface ActionResult {
 
 export async function getInitialManagerData(): Promise<{
   integrations: Integration[];
-  summary: ManagerSummary;
   sdkState: SdkState | null;
+  cronStates: CronJobState[];
 }> {
-  const [integrations, sdkState] = await Promise.all([
+  const [integrations, sdkState, cronStates] = await Promise.all([
     fetchIntegrations(),
     getSdkState(),
+    getAllCronJobStates(),
   ]);
-  const summary: ManagerSummary = {
-    total: integrations.length,
-    outdated: integrations.filter((i) => i.health === "outdated").length,
-    healthy: integrations.filter((i) => i.health === "healthy").length,
-    needs_audit: integrations.filter((i) => i.health === "needs_audit").length,
-  };
-  return { integrations, summary, sdkState };
+  return { integrations, sdkState, cronStates };
 }
 
 export async function getInitialScoutData(): Promise<{
@@ -285,60 +294,52 @@ export async function removeIntegration(
   }
 }
 
-// ─── Audit actions ──────────────────────────────────────────────
-
-function buildInternalApiUrl(path: string): string | null {
-  const rawBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL;
-  if (!rawBaseUrl) return null;
-  const hasProtocol = rawBaseUrl.startsWith("http://") || rawBaseUrl.startsWith("https://");
-  if (hasProtocol) return `${rawBaseUrl.replace(/\/$/, "")}${path}`;
-  const protocol = rawBaseUrl.includes("localhost") ? "http" : "https";
-  return `${protocol}://${rawBaseUrl}${path}`;
-}
+// ─── Audit actions (uses shared devin-session helpers) ─────────────────
 
 export async function triggerAudit(
   integrationId: string,
 ): Promise<ActionResult & { session_id?: string; session_url?: string }> {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (!cronSecret) {
-      return { success: false, error: "CRON_SECRET not configured" };
+    const integration = await getIntegration(integrationId);
+    if (!integration) {
+      return { success: false, error: "Integration not found" };
     }
 
-    const url = buildInternalApiUrl("/api/integrations/audit");
-    if (!url) {
-      return { success: false, error: "BASE_URL not configured (set NEXT_PUBLIC_BASE_URL or VERCEL_URL)" };
-    }
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cronSecret}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ integration_id: integrationId }),
-    });
-
-    const data = (await response.json()) as {
-      success?: boolean;
-      error?: string;
-      session_id?: string;
-      session_url?: string;
-    };
-
-    if (!response.ok) {
+    if (integration.audit_status === "running") {
       return {
         success: false,
-        error: data.error ?? `HTTP ${response.status}`,
-        session_id: data.session_id,
-        session_url: data.session_url,
+        error: "Audit already running",
+        session_id: integration.audit_session_id ?? undefined,
+        session_url: integration.audit_session_url ?? undefined,
       };
     }
 
+    const prompt = buildAuditPrompt(integration);
+    const session = await spawnDevinSession(
+      prompt,
+      `Audit: ${integration.name}`,
+      AUDIT_STRUCTURED_OUTPUT_SCHEMA,
+    );
+
+    await updateIntegrationAuditStatus(integrationId, "running", {
+      session_id: session.session_id,
+      session_url: session.url,
+    });
+
+    await addActivityLogEntry({
+      actor: "dashboard",
+      action: "audit_triggered",
+      target_type: "integration",
+      target_id: integrationId,
+      target_name: integration.name,
+      details: `Audit session started: ${session.url}`,
+      pr_url: null,
+    });
+
     return {
       success: true,
-      session_id: data.session_id,
-      session_url: data.session_url,
+      session_id: session.session_id,
+      session_url: session.url,
     };
   } catch (error) {
     console.error("[Integrations] triggerAudit failed:", error);
@@ -353,41 +354,44 @@ export async function checkAuditStatus(
   integrationId: string,
 ): Promise<ActionResult & { audit_status?: string; result?: unknown; session_url?: string }> {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (!cronSecret) {
-      return { success: false, error: "CRON_SECRET not configured" };
+    const integration = await getIntegration(integrationId);
+    if (!integration) {
+      return { success: false, error: "Integration not found" };
     }
 
-    const url = buildInternalApiUrl("/api/integrations/audit/status");
-    if (!url) {
-      return { success: false, error: "BASE_URL not configured (set NEXT_PUBLIC_BASE_URL or VERCEL_URL)" };
+    if (!integration.audit_session_id) {
+      return {
+        success: true,
+        audit_status: integration.audit_status,
+        session_url: integration.audit_session_url ?? undefined,
+      };
     }
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cronSecret}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ integration_id: integrationId }),
-    });
-
-    const data = (await response.json()) as {
-      status?: string;
-      result?: unknown;
-      session_url?: string;
-      error?: string;
-    };
-
-    if (!response.ok) {
-      return { success: false, error: data.error ?? `HTTP ${response.status}` };
+    // Don't re-process already-completed/failed audits
+    if (integration.audit_status === "completed" || integration.audit_status === "failed") {
+      return {
+        success: true,
+        audit_status: integration.audit_status,
+        session_url: integration.audit_session_url ?? undefined,
+      };
     }
 
+    const sessionState = await pollDevinSession(integration.audit_session_id);
+
+    if (sessionState.isFailed || sessionState.isFinished) {
+      await completeAudit(integration, sessionState, "manual");
+      return {
+        success: true,
+        audit_status: sessionState.isFailed ? "failed" : "completed",
+        result: sessionState.structured_output ?? null,
+      };
+    }
+
+    // Still running
     return {
       success: true,
-      audit_status: data.status,
-      result: data.result,
-      session_url: data.session_url,
+      audit_status: "running",
+      session_url: integration.audit_session_url ?? undefined,
     };
   } catch (error) {
     console.error("[Integrations] checkAuditStatus failed:", error);
@@ -422,4 +426,36 @@ export async function fetchFilteredIntegrations(
   healthFilter?: IntegrationHealth,
 ): Promise<Integration[]> {
   return fetchIntegrations(healthFilter);
+}
+
+// ─── Detail page actions ─────────────────────────────────────────
+
+export async function getIntegrationDetail(integrationId: string): Promise<{
+  integration: Integration | null;
+  auditHistory: AuditHistoryEntry[];
+  activity: ActivityLogEntry[];
+}> {
+  const integration = await getIntegration(integrationId);
+  if (!integration) {
+    return { integration: null, auditHistory: [], activity: [] };
+  }
+
+  const [auditHistory, activity] = await Promise.all([
+    fetchAuditHistory(integrationId),
+    fetchActivityForIntegration(integrationId),
+  ]);
+
+  return { integration, auditHistory, activity };
+}
+
+export async function fetchAuditHistoryAction(
+  integrationId: string,
+): Promise<AuditHistoryEntry[]> {
+  return fetchAuditHistory(integrationId);
+}
+
+export async function fetchIntegrationActivityAction(
+  integrationId: string,
+): Promise<ActivityLogEntry[]> {
+  return fetchActivityForIntegration(integrationId);
 }
