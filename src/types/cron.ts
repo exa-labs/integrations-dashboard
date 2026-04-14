@@ -54,7 +54,7 @@ export const CRON_JOB_DEFAULTS: Record<CronJobType, Omit<CronJobState, "_id">> =
       enabled: true,
       last_tick_at: null,
       tick_lock_until: null,
-      cooldown_minutes: 10080, // 7 days between scout runs
+      cooldown_minutes: 1440, // 24 hours between scout runs
       max_concurrent_sessions: 1,
       last_spawn_at: null,
       active_session_id: null,
