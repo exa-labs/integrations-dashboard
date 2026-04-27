@@ -342,6 +342,14 @@ export async function updateIntegrationBenchmark(
   return true;
 }
 
+export async function clearIntegrationBenchmark(id: string): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+
+  await db.collection(INTEGRATIONS).doc(id).update({ benchmark: null });
+  return true;
+}
+
 // ─── Audit Session Tracking ──────────────────────────────────────
 
 export async function updateIntegrationAuditStatus(
