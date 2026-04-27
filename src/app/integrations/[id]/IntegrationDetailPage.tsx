@@ -286,11 +286,24 @@ function OverviewTab({
   return (
     <div className="space-y-6">
       {/* Status cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <StatusCard
           label="Health"
           value={healthLabels[integration.health]}
           variant={integration.health}
+        />
+        <StatusCard
+          label="Benchmark"
+          value={integration.benchmark ? `${integration.benchmark.score}/100` : "N/A"}
+          variant={
+            integration.benchmark
+              ? integration.benchmark.score >= 90
+                ? "healthy"
+                : integration.benchmark.score >= 60
+                  ? "needs_audit"
+                  : "outdated"
+              : "none"
+          }
         />
         <StatusCard
           label="SDK Version"
@@ -503,13 +516,53 @@ function ContextTab({ integration }: { integration: Integration }) {
         </div>
       )}
 
-      {/* Empty state */}
+      {ctx.capabilities && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <h3 className="mb-3 text-sm font-semibold text-gray-900">
+            Declared Capabilities
+          </h3>
+          <div className="space-y-3">
+            {ctx.capabilities.supported_endpoints.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Endpoints</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ctx.capabilities.supported_endpoints.map((ep) => (
+                    <span key={ep} className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{ep}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {ctx.capabilities.supported_search_types.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Search Types</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ctx.capabilities.supported_search_types.map((st) => (
+                    <span key={st} className="rounded bg-purple-50 px-2 py-0.5 text-xs text-purple-700">{st}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {ctx.capabilities.supported_content_options.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Content Options</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ctx.capabilities.supported_content_options.map((co) => (
+                    <span key={co} className="rounded bg-green-50 px-2 py-0.5 text-xs text-green-700">{co}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {!ctx.notes &&
         ctx.key_files.length === 0 &&
         !ctx.build_cmd &&
         !ctx.test_cmd &&
         !ctx.publish_cmd &&
-        !ctx.external_repo && (
+        !ctx.external_repo &&
+        !ctx.capabilities && (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-12 text-center">
             <p className="text-sm text-gray-500">
               No update context configured for this integration.

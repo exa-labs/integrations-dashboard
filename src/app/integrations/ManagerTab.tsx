@@ -19,7 +19,7 @@ import { AddIntegrationDialog } from "./AddIntegrationDialog";
 import { EditContextDialog } from "./EditContextDialog";
 import { IntegrationContextPanel } from "./IntegrationContextPanel";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { triggerAudit, triggerBulkAudit, triggerGhostPr, checkAuditStatus, getIntegrationData } from "./actions";
+import { triggerAudit, triggerBulkAudit, triggerGhostPr, checkAuditStatus, getIntegrationData, recalculateAllBenchmarks } from "./actions";
 import type {
   Integration,
   IntegrationHealth,
@@ -71,6 +71,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
   const [auditLoading, setAuditLoading] = useState<string | null>(null);
   const [pollLoading, setPollLoading] = useState<string | null>(null);
   const [bulkAuditLoading, setBulkAuditLoading] = useState(false);
+  const [recalcLoading, setRecalcLoading] = useState(false);
   const [localIntegrations, setLocalIntegrations] = useState(integrations);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const localIntegrationsRef = useRef(localIntegrations);
@@ -159,6 +160,27 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
     }
   }, [bulkAuditLoading, localIntegrations]);
 
+  const handleRecalcAll = useCallback(async () => {
+    if (recalcLoading) return;
+    setRecalcLoading(true);
+    try {
+      const result = await recalculateAllBenchmarks();
+      if (result.success) {
+        const updated = await Promise.all(
+          localIntegrations.map((i) => getIntegrationData(i._id)),
+        );
+        setLocalIntegrations(
+          updated.filter((i): i is Integration => i !== null),
+        );
+        alert(`Recalculated ${result.updated} benchmark(s), ${result.skipped} skipped (no capabilities)`);
+      } else {
+        alert(result.error ?? "Failed to recalculate benchmarks");
+      }
+    } finally {
+      setRecalcLoading(false);
+    }
+  }, [recalcLoading, localIntegrations]);
+
   const [ghostPrLoading, setGhostPrLoading] = useState<string | null>(null);
 
   const handleTriggerGhostPr = useCallback(async (integration: Integration) => {
@@ -241,6 +263,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
     () => [
       columnHelper.accessor("name", {
         header: "Integration",
+        size: 180,
         cell: (info) => (
           <div>
             <Link
@@ -258,6 +281,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("health", {
         header: "Health",
+        size: 90,
         cell: (info) => (
           <Badge variant={info.getValue()}>
             {healthLabels[info.getValue()]}
@@ -276,6 +300,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("benchmark", {
         header: "Score",
+        size: 70,
         cell: (info) => {
           const bm = info.getValue();
           if (!bm) return <span className="text-xs text-gray-400 italic">N/A</span>;
@@ -303,6 +328,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("current_sdk_version", {
         header: "SDK Version",
+        size: 120,
         cell: (info) => {
           const current = info.getValue();
           const latest = info.row.original.latest_sdk_version;
@@ -320,16 +346,18 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("missing_features", {
         header: "Missing Features",
+        size: 280,
         cell: (info) => {
           const features = info.getValue();
           if (!features.length)
             return <span className="text-gray-400">—</span>;
           return (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1 max-w-[280px]">
               {features.slice(0, 2).map((f) => (
                 <span
                   key={f}
-                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700"
+                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 truncate max-w-[260px]"
+                  title={f}
                 >
                   {f}
                 </span>
@@ -346,6 +374,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("outdated_since", {
         header: "Outdated Since",
+        size: 100,
         cell: (info) => (
           <span className="text-sm text-gray-600">
             {formatDate(info.getValue())}
@@ -354,6 +383,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("approval_status", {
         header: "Approval",
+        size: 90,
         cell: (info) => {
           const status = info.getValue();
           if (status === "none") return <span className="text-gray-400">—</span>;
@@ -362,6 +392,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("audit_status", {
         header: "Audit",
+        size: 90,
         cell: (info) => {
           const status = info.getValue();
           const label = auditStatusLabels[status];
@@ -605,6 +636,13 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
         )}
         <div className="ml-auto flex gap-2">
           <button
+            onClick={handleRecalcAll}
+            disabled={recalcLoading}
+            className="rounded-md bg-gray-600 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          >
+            {recalcLoading ? "Calculating..." : "Recalc Scores"}
+          </button>
+          <button
             onClick={handleBulkAudit}
             disabled={bulkAuditLoading || localIntegrations.length === 0}
             className="rounded-md bg-purple-600 px-3 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
@@ -621,8 +659,8 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <table className="w-full table-fixed min-w-[1100px]">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-gray-200">
@@ -631,7 +669,10 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
                     key={header.id}
                     className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                     onClick={header.column.getToggleSortingHandler()}
-                    style={{ cursor: header.column.getCanSort() ? "pointer" : "default" }}
+                    style={{
+                      cursor: header.column.getCanSort() ? "pointer" : "default",
+                      width: header.getSize(),
+                    }}
                   >
                     <div className="flex items-center gap-1">
                       {header.isPlaceholder
