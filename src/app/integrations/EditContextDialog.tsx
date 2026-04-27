@@ -10,10 +10,14 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { editIntegrationContext, removeIntegration } from "./actions";
+import { CapabilitiesSection } from "./CapabilitiesSection";
 import type {
   Integration,
   IntegrationType,
   IntegrationUpdateContext,
+  ExaEndpoint,
+  ExaSearchType,
+  ExaContentOption,
 } from "@/types/integrations";
 
 interface Props {
@@ -43,6 +47,15 @@ export function EditContextDialog({ integration, onClose }: Props) {
   const [externalRepoPath, setExternalRepoPath] = useState(
     ctx.external_repo_path ?? "",
   );
+  const [endpoints, setEndpoints] = useState<ExaEndpoint[]>(
+    ctx.capabilities?.supported_endpoints ?? [],
+  );
+  const [searchTypes, setSearchTypes] = useState<ExaSearchType[]>(
+    ctx.capabilities?.supported_search_types ?? [],
+  );
+  const [contentOptions, setContentOptions] = useState<ExaContentOption[]>(
+    ctx.capabilities?.supported_content_options ?? [],
+  );
   const [isPending, startTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -60,6 +73,15 @@ export function EditContextDialog({ integration, onClose }: Props) {
       publish_cmd: publishCmd,
       ...(externalRepo ? { external_repo: externalRepo } : {}),
       ...(externalRepoPath ? { external_repo_path: externalRepoPath } : {}),
+      ...(endpoints.length > 0 || searchTypes.length > 0 || contentOptions.length > 0
+        ? {
+            capabilities: {
+              supported_endpoints: endpoints,
+              supported_search_types: searchTypes,
+              supported_content_options: contentOptions,
+            },
+          }
+        : {}),
     };
 
     const extra: { name?: string; type?: IntegrationType; repo?: string } = {};
@@ -234,6 +256,19 @@ export function EditContextDialog({ integration, onClose }: Props) {
             />
           </div>
         </div>
+
+        <hr className="border-gray-200" />
+        <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+          Capabilities (SDK Benchmark)
+        </p>
+        <CapabilitiesSection
+          endpoints={endpoints}
+          searchTypes={searchTypes}
+          contentOptions={contentOptions}
+          onEndpointsChange={setEndpoints}
+          onSearchTypesChange={setSearchTypes}
+          onContentOptionsChange={setContentOptions}
+        />
 
         <hr className="border-gray-200" />
         <div>

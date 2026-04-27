@@ -10,7 +10,14 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { addNewIntegration } from "./actions";
-import type { IntegrationType, IntegrationUpdateContext } from "@/types/integrations";
+import { CapabilitiesSection } from "./CapabilitiesSection";
+import type {
+  IntegrationType,
+  IntegrationUpdateContext,
+  ExaEndpoint,
+  ExaSearchType,
+  ExaContentOption,
+} from "@/types/integrations";
 
 interface Props {
   onClose: () => void;
@@ -36,6 +43,9 @@ export function AddIntegrationDialog({ onClose }: Props) {
   const [publishCmd, setPublishCmd] = useState("");
   const [externalRepo, setExternalRepo] = useState("");
   const [externalRepoPath, setExternalRepoPath] = useState("");
+  const [endpoints, setEndpoints] = useState<ExaEndpoint[]>([]);
+  const [searchTypes, setSearchTypes] = useState<ExaSearchType[]>([]);
+  const [contentOptions, setContentOptions] = useState<ExaContentOption[]>([]);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -60,6 +70,15 @@ export function AddIntegrationDialog({ onClose }: Props) {
       publish_cmd: publishCmd,
       ...(externalRepo ? { external_repo: externalRepo } : {}),
       ...(externalRepoPath ? { external_repo_path: externalRepoPath } : {}),
+      ...(endpoints.length > 0 || searchTypes.length > 0 || contentOptions.length > 0
+        ? {
+            capabilities: {
+              supported_endpoints: endpoints,
+              supported_search_types: searchTypes,
+              supported_content_options: contentOptions,
+            },
+          }
+        : {}),
     };
 
     startTransition(async () => {
@@ -233,6 +252,19 @@ export function AddIntegrationDialog({ onClose }: Props) {
             />
           </div>
         </div>
+
+        <hr className="border-gray-200" />
+        <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+          Capabilities (SDK Benchmark)
+        </p>
+        <CapabilitiesSection
+          endpoints={endpoints}
+          searchTypes={searchTypes}
+          contentOptions={contentOptions}
+          onEndpointsChange={setEndpoints}
+          onSearchTypesChange={setSearchTypes}
+          onContentOptionsChange={setContentOptions}
+        />
       </DialogBody>
       <DialogFooter>
         <button

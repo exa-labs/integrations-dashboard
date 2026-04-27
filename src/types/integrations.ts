@@ -32,6 +32,84 @@ export type ActivityAction =
   | "scout_completed"
   | "note";
 
+export type ExaEndpoint =
+  | "search"
+  | "search_streaming"
+  | "get_contents"
+  | "find_similar"
+  | "answer"
+  | "answer_streaming"
+  | "research";
+
+export type ExaSearchType =
+  | "auto"
+  | "fast"
+  | "neural"
+  | "instant"
+  | "deep-lite"
+  | "deep"
+  | "deep-reasoning";
+
+export type ExaContentOption =
+  | "text"
+  | "highlights"
+  | "summary"
+  | "livecrawl"
+  | "subpages"
+  | "extras";
+
+export const ALL_ENDPOINTS: ExaEndpoint[] = [
+  "search",
+  "search_streaming",
+  "get_contents",
+  "find_similar",
+  "answer",
+  "answer_streaming",
+  "research",
+];
+
+export const ALL_SEARCH_TYPES: ExaSearchType[] = [
+  "auto",
+  "fast",
+  "neural",
+  "instant",
+  "deep-lite",
+  "deep",
+  "deep-reasoning",
+];
+
+export const ALL_CONTENT_OPTIONS: ExaContentOption[] = [
+  "text",
+  "highlights",
+  "summary",
+  "livecrawl",
+  "subpages",
+  "extras",
+];
+
+export interface IntegrationCapabilities {
+  supported_endpoints: ExaEndpoint[];
+  supported_search_types: ExaSearchType[];
+  supported_content_options: ExaContentOption[];
+}
+
+export interface EndpointCoverage {
+  name: ExaEndpoint;
+  supported: boolean;
+}
+
+export interface IntegrationBenchmark {
+  last_benchmarked: Date;
+  score: number;
+  endpoint_coverage: EndpointCoverage[];
+  search_type_coverage: ExaSearchType[];
+  content_option_coverage: ExaContentOption[];
+  missing_endpoints: ExaEndpoint[];
+  missing_search_types: ExaSearchType[];
+  missing_content_options: ExaContentOption[];
+  sdk_version_match: boolean;
+}
+
 export interface IntegrationUpdateContext {
   notes: string;
   key_files: string[];
@@ -40,6 +118,7 @@ export interface IntegrationUpdateContext {
   publish_cmd: string;
   external_repo?: string;
   external_repo_path?: string;
+  capabilities?: IntegrationCapabilities;
 }
 
 export interface Integration {
@@ -68,6 +147,7 @@ export interface Integration {
   audit_started_at: Date | null;
   audit_result: string | null;
   last_audit_completed_at: Date | null;
+  benchmark: IntegrationBenchmark | null;
 }
 
 export interface ScoutRepo {

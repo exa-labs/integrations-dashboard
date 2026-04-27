@@ -297,20 +297,33 @@ export function buildAuditPrompt(integration: Integration): string {
       ? `## Missing Features\n${integration.missing_features.map((f) => `- ${f}`).join("\n")}`
       : null,
     "",
+    ctx.capabilities
+      ? [
+          "## Declared Capabilities",
+          `- **Endpoints:** ${ctx.capabilities.supported_endpoints.join(", ") || "(none)"}`,
+          `- **Search Types:** ${ctx.capabilities.supported_search_types.join(", ") || "(none)"}`,
+          `- **Content Options:** ${ctx.capabilities.supported_content_options.join(", ") || "(none)"}`,
+        ].join("\n")
+      : null,
+    "",
     "## Task",
     "1. Clone the repository and check the current state of the integration.",
     "2. Check which version of the Exa SDK (exa-py or exa-js) is being used, if any.",
     "3. Compare against the latest published SDK version on PyPI/npm.",
-    "4. Check if any new Exa API features are missing from this integration.",
-    "5. Report your findings using the structured output schema.",
+    "4. Verify the declared capabilities above by reading the integration code.",
+    "   Check which Exa endpoints (search, get_contents, find_similar, answer, research) are supported.",
+    "   Check which search types and content options are actually passed through.",
+    "5. If you find capabilities that are declared but NOT actually implemented, or capabilities",
+    "   that exist in code but are NOT declared, note them in the missing_features array.",
+    "6. Report your findings using the structured output schema.",
     "",
     "## Structured Output",
     "You MUST provide structured output with these fields:",
     "- `health`: one of 'healthy', 'outdated', 'needs_audit'",
     "- `current_sdk_version`: the version currently used (string or null)",
     "- `latest_sdk_version`: the latest available version (string or null)",
-    "- `missing_features`: array of missing feature names",
-    "- `summary`: a brief summary of the audit findings",
+    "- `missing_features`: array of missing feature/endpoint/param names",
+    "- `summary`: a brief summary of the audit findings including capability coverage",
   ];
   return lines.filter((l) => l !== null).join("\n");
 }

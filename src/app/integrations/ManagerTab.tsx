@@ -274,6 +274,33 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
           );
         },
       }),
+      columnHelper.accessor("benchmark", {
+        header: "Score",
+        cell: (info) => {
+          const bm = info.getValue();
+          if (!bm) return <span className="text-xs text-gray-400 italic">N/A</span>;
+          const score = bm.score;
+          const color =
+            score >= 90
+              ? "bg-green-100 text-green-800"
+              : score >= 60
+                ? "bg-yellow-100 text-yellow-800"
+                : "bg-red-100 text-red-800";
+          return (
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}
+              title={`Endpoints: ${bm.endpoint_coverage.filter((e: { supported: boolean }) => e.supported).length}/${bm.endpoint_coverage.length} | Search types: ${bm.search_type_coverage.length}/7 | Content: ${bm.content_option_coverage.length}/6 | SDK: ${bm.sdk_version_match ? "match" : "mismatch"}`}
+            >
+              {score}/100
+            </span>
+          );
+        },
+        sortingFn: (a, b) => {
+          const aScore = a.original.benchmark?.score ?? -1;
+          const bScore = b.original.benchmark?.score ?? -1;
+          return aScore - bScore;
+        },
+      }),
       columnHelper.accessor("current_sdk_version", {
         header: "SDK Version",
         cell: (info) => {
