@@ -237,7 +237,7 @@ export async function addNewIntegration(
     });
 
     if (updateContext.capabilities) {
-      const result = computeBenchmark(type, updateContext.capabilities, false);
+      const result = computeBenchmark(type, updateContext.capabilities, false, baselineType);
       await updateIntegrationBenchmark(slug, {
         score: result.score,
         endpoint_coverage: result.endpoint_coverage,
@@ -288,7 +288,7 @@ export async function editIntegrationContext(
           !!integration.latest_sdk_version &&
           integration.current_sdk_version === integration.latest_sdk_version;
 
-        const result = computeBenchmark(type, context.capabilities, sdkVersionMatch);
+        const result = computeBenchmark(type, context.capabilities, sdkVersionMatch, extra?.baseline_type ?? integration.baseline_type);
 
         await updateIntegrationBenchmark(integrationId, {
           score: result.score,
@@ -414,7 +414,7 @@ export async function recalculateAllBenchmarks(): Promise<ActionResult & { updat
         !!integration.latest_sdk_version &&
         integration.current_sdk_version === integration.latest_sdk_version;
 
-      const result = computeBenchmark(integration.type, caps, sdkVersionMatch);
+      const result = computeBenchmark(integration.type, caps, sdkVersionMatch, integration.baseline_type);
 
       await updateIntegrationBenchmark(integration._id, {
         score: result.score,
