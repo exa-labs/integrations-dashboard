@@ -424,6 +424,16 @@ export async function recalculateAllBenchmarks(): Promise<ActionResult & { updat
       updated++;
     }
 
+    await addActivityLogEntry({
+      actor: "dashboard-user",
+      action: "note",
+      target_type: "integration",
+      target_id: "bulk",
+      target_name: "All Integrations",
+      details: `Bulk benchmark recalculation: ${updated} updated, ${skipped} skipped`,
+      pr_url: null,
+    });
+
     return { success: true, updated, skipped };
   } catch (error) {
     console.error("[Integrations] recalculateAllBenchmarks failed:", error);
