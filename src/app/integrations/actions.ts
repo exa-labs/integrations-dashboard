@@ -18,7 +18,9 @@ import {
   updateGhostPrStatus,
   fetchAuditHistory,
   fetchActivityForIntegration,
+  updateIntegrationBenchmark,
 } from "@/lib/firebase-integrations";
+import { computeBenchmark } from "@/lib/api-surface";
 import {
   pollDevinSession,
   completeAudit,
@@ -290,6 +292,60 @@ export async function removeIntegration(
     return { success: true };
   } catch (error) {
     console.error("[Integrations] remove failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+// ─── Benchmark actions ────────────────────────────────────────────
+
+export async function recalculateBenchmark(
+  integrationId: string,
+): Promise<ActionResult> {
+  try {
+    const integration = await getIntegration(integrationId);
+    if (!integration) {
+      return { success: false, error: "Integration not found" };
+    }
+
+    const caps = integration.update_context.capabilities;
+    if (!caps) {
+      return { success: false, error: "No capabilities declared for this integration" };
+    }
+
+    const sdkVersionMatch =
+      !!integration.current_sdk_version &&
+      !!integration.latest_sdk_version &&
+      integration.current_sdk_version === integration.latest_sdk_version;
+
+    const result = computeBenchmark(integration.type, caps, sdkVersionMatch);
+
+    await updateIntegrationBenchmark(integrationId, {
+      score: result.score,
+      endpoint_coverage: result.endpoint_coverage,
+      search_type_coverage: caps.supported_search_types,
+      content_option_coverage: caps.supported_content_options,
+      missing_endpoints: result.missing_endpoints,
+      missing_search_types: result.missing_search_types,
+      missing_content_options: result.missing_content_options,
+      sdk_version_match: sdkVersionMatch,
+    });
+
+    await addActivityLogEntry({
+      actor: "dashboard-user",
+      action: "note",
+      target_type: "integration",
+      target_id: integrationId,
+      target_name: integration.name,
+      details: `Benchmark recalculated: ${result.score}/100`,
+      pr_url: null,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Integrations] recalculateBenchmark failed:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

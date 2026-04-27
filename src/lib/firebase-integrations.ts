@@ -59,6 +59,12 @@ function docToIntegration(
     audit_started_at: d.audit_started_at?.toDate?.() ?? null,
     audit_result: d.audit_result ?? null,
     last_audit_completed_at: d.last_audit_completed_at?.toDate?.() ?? null,
+    benchmark: d.benchmark
+      ? {
+          ...d.benchmark,
+          last_benchmarked: d.benchmark.last_benchmarked?.toDate?.() ?? new Date(),
+        }
+      : null,
   };
 }
 
@@ -257,6 +263,7 @@ export async function addIntegration(data: {
       audit_status: "none",
       audit_started_at: null,
       audit_result: null,
+      benchmark: null,
     });
   });
   return true;
@@ -283,6 +290,33 @@ export async function deleteIntegration(id: string): Promise<boolean> {
   const db = getFirestore();
   if (!db) return false;
   await db.collection(INTEGRATIONS).doc(id).delete();
+  return true;
+}
+
+// ─── Benchmark ───────────────────────────────────────────────────
+
+export async function updateIntegrationBenchmark(
+  id: string,
+  benchmark: {
+    score: number;
+    endpoint_coverage: { name: string; supported: boolean }[];
+    search_type_coverage: string[];
+    content_option_coverage: string[];
+    missing_endpoints: string[];
+    missing_search_types: string[];
+    missing_content_options: string[];
+    sdk_version_match: boolean;
+  },
+): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+
+  await db.collection(INTEGRATIONS).doc(id).update({
+    benchmark: {
+      ...benchmark,
+      last_benchmarked: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  });
   return true;
 }
 
