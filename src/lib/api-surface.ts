@@ -1,8 +1,10 @@
-import type {
-  ExaEndpoint,
-  ExaSearchType,
-  ExaContentOption,
-  IntegrationType,
+import {
+  ALL_SEARCH_TYPES,
+  ALL_CONTENT_OPTIONS,
+  type ExaEndpoint,
+  type ExaSearchType,
+  type ExaContentOption,
+  type IntegrationType,
 } from "@/types/integrations";
 
 /**
@@ -152,13 +154,8 @@ const APPLICABLE_ENDPOINTS: Record<IntegrationType, ExaEndpoint[]> = {
   ],
 };
 
-const ALL_SEARCH_TYPES_LIST: ExaSearchType[] = [
-  "auto", "fast", "neural", "instant", "deep-lite", "deep", "deep-reasoning",
-];
-
-const ALL_CONTENT_OPTIONS_LIST: ExaContentOption[] = [
-  "text", "highlights", "summary", "livecrawl", "subpages", "extras",
-];
+const ALL_SEARCH_TYPES_LIST = ALL_SEARCH_TYPES;
+const ALL_CONTENT_OPTIONS_LIST = ALL_CONTENT_OPTIONS;
 
 export function getApplicableEndpoints(type: IntegrationType): ExaEndpoint[] {
   return APPLICABLE_ENDPOINTS[type] ?? APPLICABLE_ENDPOINTS.other;
