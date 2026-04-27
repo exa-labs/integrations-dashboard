@@ -73,14 +73,15 @@ export function EditContextDialog({ integration, onClose }: Props) {
       publish_cmd: publishCmd,
       ...(externalRepo ? { external_repo: externalRepo } : {}),
       ...(externalRepoPath ? { external_repo_path: externalRepoPath } : {}),
-      capabilities:
-        endpoints.length > 0 || searchTypes.length > 0 || contentOptions.length > 0
-          ? {
+      ...(endpoints.length > 0 || searchTypes.length > 0 || contentOptions.length > 0
+        ? {
+            capabilities: {
               supported_endpoints: endpoints,
               supported_search_types: searchTypes,
               supported_content_options: contentOptions,
-            }
-          : undefined,
+            },
+          }
+        : {}),
     };
 
     const extra: { name?: string; type?: IntegrationType; repo?: string } = {};
