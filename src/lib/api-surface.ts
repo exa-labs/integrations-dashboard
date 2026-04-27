@@ -200,12 +200,18 @@ export function computeBenchmark(
     ? (supportedCount / applicableEndpoints.length) * 40
     : 40;
 
+  const supportedSearchTypes = capabilities.supported_search_types.filter(
+    (st) => ALL_SEARCH_TYPES_LIST.includes(st),
+  );
   const searchTypeScore = ALL_SEARCH_TYPES_LIST.length > 0
-    ? (capabilities.supported_search_types.length / ALL_SEARCH_TYPES_LIST.length) * 15
+    ? (supportedSearchTypes.length / ALL_SEARCH_TYPES_LIST.length) * 15
     : 15;
 
+  const supportedContentOptions = capabilities.supported_content_options.filter(
+    (co) => ALL_CONTENT_OPTIONS_LIST.includes(co),
+  );
   const contentScore = ALL_CONTENT_OPTIONS_LIST.length > 0
-    ? (capabilities.supported_content_options.length / ALL_CONTENT_OPTIONS_LIST.length) * 35
+    ? (supportedContentOptions.length / ALL_CONTENT_OPTIONS_LIST.length) * 35
     : 35;
 
   const versionScore = sdkVersionMatch ? 10 : 0;
