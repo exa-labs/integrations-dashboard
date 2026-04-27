@@ -136,7 +136,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
 
   const handleBulkAudit = useCallback(async () => {
     if (bulkAuditLoading) return;
-    const count = localIntegrations.filter((i) => i.audit_status !== "running" && i.baseline_type !== "first_party" && i.baseline_type !== "na").length;
+    const count = localIntegrations.filter((i) => i.audit_status !== "running" && i.approval_status !== "in_progress" && i.baseline_type !== "first_party" && i.baseline_type !== "na").length;
     if (!confirm(`Trigger audits for ${count} integration(s)?`)) return;
     setBulkAuditLoading(true);
     try {
