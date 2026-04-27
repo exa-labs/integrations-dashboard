@@ -259,7 +259,8 @@ export function computeBenchmark(
     ? (supportedContentOptions.length / applicableContentOptions.length) * 35
     : 35;
 
-  const versionScore = sdkVersionMatch ? 10 : 0;
+  const isSDKBaseline = baselineType === "python_sdk" || baselineType === "typescript_sdk";
+  const versionScore = isSDKBaseline ? (sdkVersionMatch ? 10 : 0) : 10;
 
   const score = Math.round(endpointScore + searchTypeScore + contentScore + versionScore);
 

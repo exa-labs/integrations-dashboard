@@ -318,7 +318,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
           return (
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}
-              title={`Endpoints: ${epSupported}/${epTotal} | Search types: ${bm.search_type_coverage.length}/${stTotal} | Content: ${bm.content_option_coverage.length}/${coTotal} | SDK: ${bm.sdk_version_match ? "match" : "mismatch"}`}
+              title={`Endpoints: ${epSupported}/${epTotal} | Search types: ${bm.search_type_coverage.length}/${stTotal} | Content: ${bm.content_option_coverage.length}/${coTotal}${info.row.original.baseline_type === "python_sdk" || info.row.original.baseline_type === "typescript_sdk" ? ` | SDK: ${bm.sdk_version_match ? "match" : "mismatch"}` : ""}`}
             >
               {score}/100
             </span>
