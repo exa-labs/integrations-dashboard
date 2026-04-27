@@ -81,8 +81,11 @@ export async function GET(req: NextRequest) {
     for (const integration of integrations) {
       if (!integration.current_sdk_version) continue;
 
-      const isPython = integration.type === "python";
-      const isTypescript = integration.type === "typescript";
+      const bl = integration.baseline_type;
+      if (bl === "first_party" || bl === "na" || bl === "mcp" || bl === "api_direct" || bl === "docs" || bl === "websets_api") continue;
+
+      const isPython = bl === "python_sdk" || integration.type === "python";
+      const isTypescript = bl === "typescript_sdk" || integration.type === "typescript";
       const latestVersion = isPython ? exaPyVersion : isTypescript ? exaJsVersion : null;
 
       if (!latestVersion) continue;

@@ -5,6 +5,7 @@ import {
   type ExaSearchType,
   type ExaContentOption,
   type IntegrationType,
+  type BaselineType,
 } from "@/types/integrations";
 
 /**
@@ -129,12 +130,7 @@ export const EXA_API_SURFACE: EndpointSpec[] = [
   },
 ];
 
-/**
- * Defines which endpoints are applicable per integration type.
- * Integrations are only benchmarked against endpoints that make
- * sense for their type — e.g. Google Sheets doesn't need streaming.
- */
-const APPLICABLE_ENDPOINTS: Record<IntegrationType, ExaEndpoint[]> = {
+const APPLICABLE_ENDPOINTS_BY_TYPE: Record<IntegrationType, ExaEndpoint[]> = {
   python: [
     "search", "search_streaming", "get_contents", "find_similar",
     "answer", "answer_streaming", "research",
@@ -154,23 +150,61 @@ const APPLICABLE_ENDPOINTS: Record<IntegrationType, ExaEndpoint[]> = {
   ],
 };
 
-const ALL_SEARCH_TYPES_LIST = ALL_SEARCH_TYPES;
-const ALL_CONTENT_OPTIONS_LIST = ALL_CONTENT_OPTIONS;
+const BASELINE_ENDPOINTS: Record<BaselineType, ExaEndpoint[]> = {
+  first_party: [],
+  python_sdk: [
+    "search", "search_streaming", "get_contents", "find_similar",
+    "answer", "answer_streaming", "research",
+  ],
+  typescript_sdk: [
+    "search", "search_streaming", "get_contents", "find_similar",
+    "answer", "answer_streaming", "research",
+  ],
+  mcp: [
+    "search", "get_contents", "find_similar", "research",
+  ],
+  api_direct: [
+    "search", "get_contents", "find_similar", "answer",
+  ],
+  docs: [
+    "search", "get_contents", "find_similar", "answer",
+  ],
+  websets_api: [],
+  na: [],
+};
 
-export function getApplicableEndpoints(type: IntegrationType): ExaEndpoint[] {
-  return APPLICABLE_ENDPOINTS[type] ?? APPLICABLE_ENDPOINTS.other;
+const MCP_SEARCH_TYPES: ExaSearchType[] = ["auto", "fast", "instant"];
+const MCP_CONTENT_OPTIONS: ExaContentOption[] = ["text", "highlights", "summary", "subpages"];
+
+export interface BaselineSurface {
+  endpoints: ExaEndpoint[];
+  searchTypes: ExaSearchType[];
+  contentOptions: ExaContentOption[];
 }
 
-/**
- * Compute a benchmark score for an integration based on its declared
- * capabilities vs. the canonical API surface.
- *
- * Weights:
- *   endpoint coverage  = 40%
- *   search type coverage = 15%
- *   content option coverage = 35%
- *   SDK version match  = 10%
- */
+export function getBaselineSurface(baselineType: BaselineType): BaselineSurface {
+  if (baselineType === "mcp") {
+    return {
+      endpoints: BASELINE_ENDPOINTS.mcp,
+      searchTypes: MCP_SEARCH_TYPES,
+      contentOptions: MCP_CONTENT_OPTIONS,
+    };
+  }
+  return {
+    endpoints: BASELINE_ENDPOINTS[baselineType],
+    searchTypes: ALL_SEARCH_TYPES,
+    contentOptions: ALL_CONTENT_OPTIONS,
+  };
+}
+
+export function getApplicableEndpoints(type: IntegrationType): ExaEndpoint[] {
+  return APPLICABLE_ENDPOINTS_BY_TYPE[type] ?? APPLICABLE_ENDPOINTS_BY_TYPE.other;
+}
+
+export function getApplicableEndpointsByBaseline(baselineType: BaselineType): ExaEndpoint[] {
+  return BASELINE_ENDPOINTS[baselineType];
+}
+
 export function computeBenchmark(
   type: IntegrationType,
   capabilities: {
@@ -179,6 +213,7 @@ export function computeBenchmark(
     supported_content_options: ExaContentOption[];
   },
   sdkVersionMatch: boolean,
+  baselineType?: BaselineType,
 ): {
   score: number;
   endpoint_coverage: { name: ExaEndpoint; supported: boolean }[];
@@ -186,7 +221,20 @@ export function computeBenchmark(
   missing_search_types: ExaSearchType[];
   missing_content_options: ExaContentOption[];
 } {
-  const applicableEndpoints = getApplicableEndpoints(type);
+  if (baselineType === "first_party" || baselineType === "na" || baselineType === "websets_api") {
+    return {
+      score: 100,
+      endpoint_coverage: [],
+      missing_endpoints: [],
+      missing_search_types: [],
+      missing_content_options: [],
+    };
+  }
+
+  const surface = baselineType ? getBaselineSurface(baselineType) : null;
+  const applicableEndpoints = surface ? surface.endpoints : getApplicableEndpoints(type);
+  const applicableSearchTypes = surface ? surface.searchTypes : ALL_SEARCH_TYPES;
+  const applicableContentOptions = surface ? surface.contentOptions : ALL_CONTENT_OPTIONS;
 
   const endpointCoverage = applicableEndpoints.map((ep) => ({
     name: ep,
@@ -198,17 +246,17 @@ export function computeBenchmark(
     : 40;
 
   const supportedSearchTypes = capabilities.supported_search_types.filter(
-    (st) => ALL_SEARCH_TYPES_LIST.includes(st),
+    (st) => applicableSearchTypes.includes(st),
   );
-  const searchTypeScore = ALL_SEARCH_TYPES_LIST.length > 0
-    ? (supportedSearchTypes.length / ALL_SEARCH_TYPES_LIST.length) * 15
+  const searchTypeScore = applicableSearchTypes.length > 0
+    ? (supportedSearchTypes.length / applicableSearchTypes.length) * 15
     : 15;
 
   const supportedContentOptions = capabilities.supported_content_options.filter(
-    (co) => ALL_CONTENT_OPTIONS_LIST.includes(co),
+    (co) => applicableContentOptions.includes(co),
   );
-  const contentScore = ALL_CONTENT_OPTIONS_LIST.length > 0
-    ? (supportedContentOptions.length / ALL_CONTENT_OPTIONS_LIST.length) * 35
+  const contentScore = applicableContentOptions.length > 0
+    ? (supportedContentOptions.length / applicableContentOptions.length) * 35
     : 35;
 
   const versionScore = sdkVersionMatch ? 10 : 0;
@@ -218,10 +266,10 @@ export function computeBenchmark(
   const missingEndpoints = applicableEndpoints.filter(
     (ep) => !capabilities.supported_endpoints.includes(ep),
   );
-  const missingSearchTypes = ALL_SEARCH_TYPES_LIST.filter(
+  const missingSearchTypes = applicableSearchTypes.filter(
     (st) => !capabilities.supported_search_types.includes(st),
   );
-  const missingContentOptions = ALL_CONTENT_OPTIONS_LIST.filter(
+  const missingContentOptions = applicableContentOptions.filter(
     (co) => !capabilities.supported_content_options.includes(co),
   );
 

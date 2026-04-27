@@ -286,10 +286,14 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
               : score >= 60
                 ? "bg-yellow-100 text-yellow-800"
                 : "bg-red-100 text-red-800";
+          const epSupported = bm.endpoint_coverage.filter((e: { supported: boolean }) => e.supported).length;
+          const epTotal = bm.endpoint_coverage.length;
+          const stTotal = bm.missing_search_types.length + bm.search_type_coverage.length;
+          const coTotal = bm.missing_content_options.length + bm.content_option_coverage.length;
           return (
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}
-              title={`Endpoints: ${bm.endpoint_coverage.filter((e: { supported: boolean }) => e.supported).length}/${bm.endpoint_coverage.length} | Search types: ${bm.search_type_coverage.length}/7 | Content: ${bm.content_option_coverage.length}/6 | SDK: ${bm.sdk_version_match ? "match" : "mismatch"}`}
+              title={`Endpoints: ${epSupported}/${epTotal} | Search types: ${bm.search_type_coverage.length}/${stTotal} | Content: ${bm.content_option_coverage.length}/${coTotal} | SDK: ${bm.sdk_version_match ? "match" : "mismatch"}`}
             >
               {score}/100
             </span>

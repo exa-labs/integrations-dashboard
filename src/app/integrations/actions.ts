@@ -34,6 +34,7 @@ import { getAllCronJobStates } from "@/lib/firebase-cron";
 import type {
   Integration,
   IntegrationType,
+  BaselineType,
   IntegrationUpdateContext,
   ScoutRepo,
   ActivityLogEntry,
@@ -219,9 +220,10 @@ export async function addNewIntegration(
   type: IntegrationType,
   repo: string,
   updateContext: IntegrationUpdateContext,
+  baselineType?: BaselineType,
 ): Promise<ActionResult> {
   try {
-    await addIntegration({ name, slug, type, repo, update_context: updateContext });
+    await addIntegration({ name, slug, type, baseline_type: baselineType, repo, update_context: updateContext });
 
     await addActivityLogEntry({
       actor: "dashboard-user",
@@ -247,7 +249,7 @@ export async function editIntegrationContext(
   integrationId: string,
   integrationName: string,
   context: IntegrationUpdateContext,
-  extra?: { name?: string; type?: IntegrationType; repo?: string },
+  extra?: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType },
 ): Promise<ActionResult> {
   try {
     await updateIntegrationContext(integrationId, context, extra);
@@ -320,7 +322,7 @@ export async function recalculateBenchmark(
       !!integration.latest_sdk_version &&
       integration.current_sdk_version === integration.latest_sdk_version;
 
-    const result = computeBenchmark(integration.type, caps, sdkVersionMatch);
+    const result = computeBenchmark(integration.type, caps, sdkVersionMatch, integration.baseline_type);
 
     await updateIntegrationBenchmark(integrationId, {
       score: result.score,
@@ -475,7 +477,8 @@ export async function triggerBulkAudit(): Promise<
   try {
     const integrations = await fetchIntegrations();
     const eligible = integrations.filter(
-      (i) => i.audit_status !== "running" && i.approval_status !== "in_progress",
+      (i) => i.audit_status !== "running" && i.approval_status !== "in_progress"
+        && i.baseline_type !== "first_party" && i.baseline_type !== "na",
     );
     const skipped = integrations.length - eligible.length;
 

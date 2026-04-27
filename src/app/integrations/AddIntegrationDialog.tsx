@@ -13,6 +13,7 @@ import { addNewIntegration } from "./actions";
 import { CapabilitiesSection } from "./CapabilitiesSection";
 import type {
   IntegrationType,
+  BaselineType,
   IntegrationUpdateContext,
   ExaEndpoint,
   ExaSearchType,
@@ -31,10 +32,22 @@ const TYPE_OPTIONS: { value: IntegrationType; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+const BASELINE_OPTIONS: { value: BaselineType; label: string }[] = [
+  { value: "python_sdk", label: "Python SDK (exa-py)" },
+  { value: "typescript_sdk", label: "TypeScript SDK (exa-js)" },
+  { value: "mcp", label: "MCP (exa-mcp-server)" },
+  { value: "api_direct", label: "API Direct" },
+  { value: "docs", label: "Docs / Guide" },
+  { value: "first_party", label: "First Party (no audit)" },
+  { value: "websets_api", label: "Websets API" },
+  { value: "na", label: "N/A" },
+];
+
 export function AddIntegrationDialog({ onClose }: Props) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [type, setType] = useState<IntegrationType>("python");
+  const [baselineType, setBaselineType] = useState<BaselineType>("python_sdk");
   const [repo, setRepo] = useState("");
   const [notes, setNotes] = useState("");
   const [keyFiles, setKeyFiles] = useState("");
@@ -82,7 +95,7 @@ export function AddIntegrationDialog({ onClose }: Props) {
     };
 
     startTransition(async () => {
-      const result = await addNewIntegration(name, slug, type, repo, context);
+      const result = await addNewIntegration(name, slug, type, repo, context, baselineType);
       if (result.success) {
         router.refresh();
         onClose();
@@ -142,6 +155,25 @@ export function AddIntegrationDialog({ onClose }: Props) {
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Baseline
+            </label>
+            <select
+              value={baselineType}
+              onChange={(e) => setBaselineType(e.target.value as BaselineType)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {BASELINE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Repo (owner/name)

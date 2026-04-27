@@ -14,6 +14,7 @@ import { CapabilitiesSection } from "./CapabilitiesSection";
 import type {
   Integration,
   IntegrationType,
+  BaselineType,
   IntegrationUpdateContext,
   ExaEndpoint,
   ExaSearchType,
@@ -33,10 +34,22 @@ const TYPE_OPTIONS: { value: IntegrationType; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+const BASELINE_OPTIONS: { value: BaselineType; label: string }[] = [
+  { value: "python_sdk", label: "Python SDK (exa-py)" },
+  { value: "typescript_sdk", label: "TypeScript SDK (exa-js)" },
+  { value: "mcp", label: "MCP (exa-mcp-server)" },
+  { value: "api_direct", label: "API Direct" },
+  { value: "docs", label: "Docs / Guide" },
+  { value: "first_party", label: "First Party (no audit)" },
+  { value: "websets_api", label: "Websets API" },
+  { value: "na", label: "N/A" },
+];
+
 export function EditContextDialog({ integration, onClose }: Props) {
   const ctx = integration.update_context;
   const [name, setName] = useState(integration.name);
   const [type, setType] = useState<IntegrationType>(integration.type);
+  const [baselineType, setBaselineType] = useState<BaselineType>(integration.baseline_type);
   const [repo, setRepo] = useState(integration.repo);
   const [notes, setNotes] = useState(ctx.notes);
   const [keyFiles, setKeyFiles] = useState(ctx.key_files.join(", "));
@@ -84,9 +97,10 @@ export function EditContextDialog({ integration, onClose }: Props) {
         : {}),
     };
 
-    const extra: { name?: string; type?: IntegrationType; repo?: string } = {};
+    const extra: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType } = {};
     if (name !== integration.name) extra.name = name;
     if (type !== integration.type) extra.type = type;
+    if (baselineType !== integration.baseline_type) extra.baseline_type = baselineType;
     if (repo !== integration.repo) extra.repo = repo;
 
     startTransition(async () => {
@@ -126,7 +140,7 @@ export function EditContextDialog({ integration, onClose }: Props) {
         <DialogTitle>Edit {integration.name}</DialogTitle>
       </DialogHeader>
       <DialogBody className="max-h-[70vh] space-y-4 overflow-y-auto">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Name
@@ -138,6 +152,20 @@ export function EditContextDialog({ integration, onClose }: Props) {
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Repo
+            </label>
+            <input
+              type="text"
+              value={repo}
+              onChange={(e) => setRepo(e.target.value)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Type
@@ -156,14 +184,19 @@ export function EditContextDialog({ integration, onClose }: Props) {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">
-              Repo
+              Baseline
             </label>
-            <input
-              type="text"
-              value={repo}
-              onChange={(e) => setRepo(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+            <select
+              value={baselineType}
+              onChange={(e) => setBaselineType(e.target.value as BaselineType)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {BASELINE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
