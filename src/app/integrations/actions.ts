@@ -237,17 +237,21 @@ export async function addNewIntegration(
     });
 
     if (updateContext.capabilities) {
-      const result = computeBenchmark(type, updateContext.capabilities, false, baselineType);
-      await updateIntegrationBenchmark(slug, {
-        score: result.score,
-        endpoint_coverage: result.endpoint_coverage,
-        search_type_coverage: updateContext.capabilities.supported_search_types,
-        content_option_coverage: updateContext.capabilities.supported_content_options,
-        missing_endpoints: result.missing_endpoints,
-        missing_search_types: result.missing_search_types,
-        missing_content_options: result.missing_content_options,
-        sdk_version_match: false,
-      });
+      try {
+        const result = computeBenchmark(type, updateContext.capabilities, false, baselineType);
+        await updateIntegrationBenchmark(slug, {
+          score: result.score,
+          endpoint_coverage: result.endpoint_coverage,
+          search_type_coverage: updateContext.capabilities.supported_search_types,
+          content_option_coverage: updateContext.capabilities.supported_content_options,
+          missing_endpoints: result.missing_endpoints,
+          missing_search_types: result.missing_search_types,
+          missing_content_options: result.missing_content_options,
+          sdk_version_match: false,
+        });
+      } catch (bmError) {
+        console.error("[Integrations] benchmark compute failed (integration was created):", bmError);
+      }
     }
 
     return { success: true };
