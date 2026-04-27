@@ -346,17 +346,17 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("missing_features", {
         header: "Missing Features",
-        size: 280,
+        size: 220,
         cell: (info) => {
           const features = info.getValue();
           if (!features.length)
             return <span className="text-gray-400">—</span>;
           return (
-            <div className="flex flex-wrap gap-1 max-w-[280px]">
+            <div className="flex flex-wrap gap-1 max-w-[220px]">
               {features.slice(0, 2).map((f) => (
                 <span
                   key={f}
-                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 truncate max-w-[260px]"
+                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 truncate max-w-[200px]"
                   title={f}
                 >
                   {f}
@@ -411,6 +411,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       columnHelper.display({
         id: "actions",
         header: "",
+        size: 150,
         cell: (info) => {
           const row = info.row.original;
           return (
@@ -660,7 +661,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full table-fixed min-w-[1100px]">
+        <table className="w-full table-fixed min-w-[1200px]">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-gray-200">
