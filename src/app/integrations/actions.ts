@@ -19,6 +19,7 @@ import {
   fetchAuditHistory,
   fetchActivityForIntegration,
   updateIntegrationBenchmark,
+  clearIntegrationBenchmark,
 } from "@/lib/firebase-integrations";
 import { computeBenchmark } from "@/lib/api-surface";
 import {
@@ -298,6 +299,8 @@ export async function editIntegrationContext(
           sdk_version_match: sdkVersionMatch,
         });
       }
+    } else {
+      await clearIntegrationBenchmark(integrationId);
     }
 
     return { success: true };
