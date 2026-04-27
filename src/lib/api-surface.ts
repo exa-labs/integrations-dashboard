@@ -236,6 +236,6 @@ export function computeBenchmark(
 
 export function scoreToHealth(score: number): "healthy" | "outdated" | "needs_audit" {
   if (score >= 90) return "healthy";
-  if (score >= 60) return "outdated";
-  return "needs_audit";
+  if (score >= 60) return "needs_audit";
+  return "outdated";
 }

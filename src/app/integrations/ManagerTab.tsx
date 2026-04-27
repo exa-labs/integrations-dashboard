@@ -352,11 +352,11 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
           if (!features.length)
             return <span className="text-gray-400">—</span>;
           return (
-            <div className="flex flex-wrap gap-1 max-w-[220px]">
+            <div className="flex flex-wrap gap-1 max-w-[150px]">
               {features.slice(0, 2).map((f) => (
                 <span
                   key={f}
-                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 truncate max-w-[200px]"
+                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 truncate max-w-[140px]"
                   title={f}
                 >
                   {f}
@@ -415,7 +415,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
         cell: (info) => {
           const row = info.row.original;
           return (
-            <div className="flex gap-2">
+            <div className="flex gap-2 whitespace-nowrap">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -661,18 +661,28 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full table-fixed min-w-[1200px]">
+        <table className="w-full table-fixed">
+          <colgroup>
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "16%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "27%" }} />
+          </colgroup>
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-gray-200">
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 ${header.column.id === "missing_features" ? "max-w-[200px]" : ""}`}
                     onClick={header.column.getToggleSortingHandler()}
                     style={{
                       cursor: header.column.getCanSort() ? "pointer" : "default",
-                      width: header.getSize(),
                     }}
                   >
                     <div className="flex items-center gap-1">
@@ -707,7 +717,10 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
                     className="border-b border-gray-100 transition-colors hover:bg-gray-50"
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3">
+                      <td
+                        key={cell.id}
+                        className={`px-4 py-3 ${cell.column.id === "missing_features" ? "max-w-[200px] overflow-hidden" : ""}`}
+                      >
                         {flexRender(
                           cell.column.columnDef.cell,
                           cell.getContext(),
