@@ -168,17 +168,14 @@ export function IntegrationContextPanel({ integration }: Props) {
               </div>
               {result.missing_features && result.missing_features.length > 0 && (
                 <div className="mt-2">
-                  <p className="text-xs text-gray-500">Missing Features:</p>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <p className="text-xs text-gray-500">Missing Features ({result.missing_features.length}):</p>
+                  <ul className="mt-1 max-h-32 overflow-y-auto space-y-0.5 rounded border border-gray-200 bg-gray-50 p-2">
                     {result.missing_features.map((f) => (
-                      <span
-                        key={f}
-                        className="rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700"
-                      >
+                      <li key={f} className="text-xs text-red-700 truncate" title={f}>
                         {f}
-                      </span>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
             </div>

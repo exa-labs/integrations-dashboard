@@ -9,7 +9,6 @@ import {
   DialogBody,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { approveIntegrationUpdate } from "./actions";
 import type { Integration } from "@/types/integrations";
 
@@ -63,14 +62,14 @@ export function ApproveUpdateDialog({ integration, onClose }: Props) {
           </div>
           {integration.missing_features.length > 0 && (
             <div>
-              <span className="text-gray-500">Missing features:</span>
-              <div className="mt-1 flex flex-wrap gap-1">
+              <span className="text-gray-500">Missing features ({integration.missing_features.length}):</span>
+              <ul className="mt-1 max-h-48 overflow-y-auto space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
                 {integration.missing_features.map((f) => (
-                  <Badge key={f} variant="outdated">
-                    {f}
-                  </Badge>
+                  <li key={f} className="text-xs text-red-700">
+                    • {f}
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
         </div>
