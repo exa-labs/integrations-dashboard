@@ -392,18 +392,18 @@ function OverviewTab({
             auditResult.missing_features.length > 0 && (
               <div className="mt-4">
                 <p className="mb-2 text-xs font-medium text-gray-500">
-                  Missing Features
+                  Missing Features ({auditResult.missing_features.length})
                 </p>
-                <div className="flex flex-wrap gap-1.5">
+                <ul className="max-h-48 overflow-y-auto space-y-1 rounded border border-gray-200 bg-gray-50 p-3">
                   {auditResult.missing_features.map((f) => (
-                    <span
+                    <li
                       key={f}
-                      className="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700"
+                      className="text-xs text-red-700"
                     >
                       {f}
-                    </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
         </div>
@@ -426,16 +426,16 @@ function OverviewTab({
           <h3 className="mb-3 text-sm font-semibold text-gray-900">
             Missing Features ({integration.missing_features.length})
           </h3>
-          <div className="flex flex-wrap gap-2">
+          <ul className="max-h-64 overflow-y-auto space-y-1.5 rounded border border-gray-200 bg-gray-50 p-3">
             {integration.missing_features.map((f) => (
-              <span
+              <li
                 key={f}
-                className="rounded-md bg-gray-100 px-3 py-1 text-sm text-gray-700"
+                className="text-sm text-gray-700"
               >
                 {f}
-              </span>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
     </div>
@@ -648,8 +648,11 @@ function AuditHistoryTab({ history }: { history: AuditHistoryEntry[] }) {
                 )}
                 {result.missing_features &&
                   result.missing_features.length > 0 && (
-                    <span>
-                      Missing: {result.missing_features.join(", ")}
+                    <span
+                      className="truncate max-w-xs inline-block align-bottom"
+                      title={result.missing_features.join(", ")}
+                    >
+                      Missing: {result.missing_features.length} issue{result.missing_features.length !== 1 ? "s" : ""}
                     </span>
                   )}
               </div>

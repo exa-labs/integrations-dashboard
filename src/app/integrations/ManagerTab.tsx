@@ -349,29 +349,19 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
         },
       }),
       columnHelper.accessor("missing_features", {
-        header: "Missing Features",
-        size: 220,
+        header: "Issues",
+        size: 80,
         cell: (info) => {
           const features = info.getValue();
           if (!features.length)
             return <span className="text-gray-400">—</span>;
           return (
-            <div className="flex flex-wrap gap-1 max-w-[150px]">
-              {features.slice(0, 2).map((f) => (
-                <span
-                  key={f}
-                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 truncate max-w-[140px]"
-                  title={f}
-                >
-                  {f}
-                </span>
-              ))}
-              {features.length > 2 && (
-                <span className="text-xs text-gray-400">
-                  +{features.length - 2}
-                </span>
-              )}
-            </div>
+            <span
+              className="cursor-default text-xs text-red-600"
+              title={features.join("\n")}
+            >
+              {features.length} issue{features.length !== 1 ? "s" : ""}
+            </span>
           );
         },
         enableSorting: false,
@@ -415,11 +405,11 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       columnHelper.display({
         id: "actions",
         header: "",
-        size: 150,
+        size: 200,
         cell: (info) => {
           const row = info.row.original;
           return (
-            <div className="flex gap-2 whitespace-nowrap">
+            <div className="flex flex-wrap gap-x-2 gap-y-1">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -665,25 +655,14 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
 
       {/* Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full table-fixed">
-          <colgroup>
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "5%" }} />
-            <col style={{ width: "9%" }} />
-            <col style={{ width: "16%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "8%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "27%" }} />
-          </colgroup>
+        <table className="w-full">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-gray-200">
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 ${header.column.id === "missing_features" ? "max-w-[200px]" : ""}`}
+                    className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 whitespace-nowrap"
                     onClick={header.column.getToggleSortingHandler()}
                     style={{
                       cursor: header.column.getCanSort() ? "pointer" : "default",
@@ -723,7 +702,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
                     {row.getVisibleCells().map((cell) => (
                       <td
                         key={cell.id}
-                        className={`px-4 py-3 ${cell.column.id === "missing_features" ? "max-w-[200px] overflow-hidden" : ""}`}
+                        className="px-3 py-3 text-sm"
                       >
                         {flexRender(
                           cell.column.columnDef.cell,
