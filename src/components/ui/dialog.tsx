@@ -73,7 +73,7 @@ export function DialogBody({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={cx("px-6 py-4", className)}>{children}</div>;
+  return <div className={cx("max-h-[60vh] overflow-y-auto px-6 py-4", className)}>{children}</div>;
 }
 
 export function DialogFooter({
