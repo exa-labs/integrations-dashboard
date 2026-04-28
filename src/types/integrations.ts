@@ -5,6 +5,16 @@ export type IntegrationType =
   | "external"
   | "sheets"
   | "other";
+
+export type BaselineType =
+  | "first_party"
+  | "python_sdk"
+  | "typescript_sdk"
+  | "mcp"
+  | "api_direct"
+  | "docs"
+  | "websets_api"
+  | "na";
 export type ScoutScore = "strong" | "medium" | "weak";
 export type ExaFit = "strong" | "medium";
 export type OutreachStatus =
@@ -126,6 +136,7 @@ export interface Integration {
   name: string;
   slug: string;
   type: IntegrationType;
+  baseline_type: BaselineType;
   repo: string;
   health: IntegrationHealth;
   current_sdk_version: string | null;

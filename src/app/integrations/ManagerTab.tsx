@@ -19,7 +19,7 @@ import { AddIntegrationDialog } from "./AddIntegrationDialog";
 import { EditContextDialog } from "./EditContextDialog";
 import { IntegrationContextPanel } from "./IntegrationContextPanel";
 import { formatDate, formatRelativeTime } from "@/lib/utils";
-import { triggerAudit, triggerBulkAudit, triggerGhostPr, checkAuditStatus, getIntegrationData } from "./actions";
+import { triggerAudit, triggerBulkAudit, triggerGhostPr, checkAuditStatus, getIntegrationData, recalculateAllBenchmarks } from "./actions";
 import type {
   Integration,
   IntegrationHealth,
@@ -71,6 +71,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
   const [auditLoading, setAuditLoading] = useState<string | null>(null);
   const [pollLoading, setPollLoading] = useState<string | null>(null);
   const [bulkAuditLoading, setBulkAuditLoading] = useState(false);
+  const [recalcLoading, setRecalcLoading] = useState(false);
   const [localIntegrations, setLocalIntegrations] = useState(integrations);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const localIntegrationsRef = useRef(localIntegrations);
@@ -135,7 +136,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
 
   const handleBulkAudit = useCallback(async () => {
     if (bulkAuditLoading) return;
-    const count = localIntegrations.filter((i) => i.audit_status !== "running").length;
+    const count = localIntegrations.filter((i) => i.audit_status !== "running" && i.approval_status !== "in_progress" && i.baseline_type !== "first_party" && i.baseline_type !== "na").length;
     if (!confirm(`Trigger audits for ${count} integration(s)?`)) return;
     setBulkAuditLoading(true);
     try {
@@ -158,6 +159,27 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       setBulkAuditLoading(false);
     }
   }, [bulkAuditLoading, localIntegrations]);
+
+  const handleRecalcAll = useCallback(async () => {
+    if (recalcLoading) return;
+    setRecalcLoading(true);
+    try {
+      const result = await recalculateAllBenchmarks();
+      if (result.success) {
+        const updated = await Promise.all(
+          localIntegrations.map((i) => getIntegrationData(i._id)),
+        );
+        setLocalIntegrations(
+          updated.filter((i): i is Integration => i !== null),
+        );
+        alert(`Recalculated ${result.updated} benchmark(s), ${result.skipped} skipped (no capabilities)`);
+      } else {
+        alert(result.error ?? "Failed to recalculate benchmarks");
+      }
+    } finally {
+      setRecalcLoading(false);
+    }
+  }, [recalcLoading, localIntegrations]);
 
   const [ghostPrLoading, setGhostPrLoading] = useState<string | null>(null);
 
@@ -241,6 +263,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
     () => [
       columnHelper.accessor("name", {
         header: "Integration",
+        size: 180,
         cell: (info) => (
           <div>
             <Link
@@ -258,6 +281,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("health", {
         header: "Health",
+        size: 90,
         cell: (info) => (
           <Badge variant={info.getValue()}>
             {healthLabels[info.getValue()]}
@@ -276,6 +300,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("benchmark", {
         header: "Score",
+        size: 70,
         cell: (info) => {
           const bm = info.getValue();
           if (!bm) return <span className="text-xs text-gray-400 italic">N/A</span>;
@@ -286,10 +311,14 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
               : score >= 60
                 ? "bg-yellow-100 text-yellow-800"
                 : "bg-red-100 text-red-800";
+          const epSupported = bm.endpoint_coverage.filter((e: { supported: boolean }) => e.supported).length;
+          const epTotal = bm.endpoint_coverage.length;
+          const stTotal = bm.missing_search_types.length + bm.search_type_coverage.length;
+          const coTotal = bm.missing_content_options.length + bm.content_option_coverage.length;
           return (
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}
-              title={`Endpoints: ${bm.endpoint_coverage.filter((e: { supported: boolean }) => e.supported).length}/${bm.endpoint_coverage.length} | Search types: ${bm.search_type_coverage.length}/7 | Content: ${bm.content_option_coverage.length}/6 | SDK: ${bm.sdk_version_match ? "match" : "mismatch"}`}
+              title={`Endpoints: ${epSupported}/${epTotal} | Search types: ${bm.search_type_coverage.length}/${stTotal} | Content: ${bm.content_option_coverage.length}/${coTotal}${info.row.original.baseline_type === "python_sdk" || info.row.original.baseline_type === "typescript_sdk" ? ` | SDK: ${bm.sdk_version_match ? "match" : "mismatch"}` : ""}`}
             >
               {score}/100
             </span>
@@ -303,6 +332,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("current_sdk_version", {
         header: "SDK Version",
+        size: 120,
         cell: (info) => {
           const current = info.getValue();
           const latest = info.row.original.latest_sdk_version;
@@ -320,16 +350,18 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("missing_features", {
         header: "Missing Features",
+        size: 220,
         cell: (info) => {
           const features = info.getValue();
           if (!features.length)
             return <span className="text-gray-400">—</span>;
           return (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1 max-w-[150px]">
               {features.slice(0, 2).map((f) => (
                 <span
                   key={f}
-                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700"
+                  className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 truncate max-w-[140px]"
+                  title={f}
                 >
                   {f}
                 </span>
@@ -346,6 +378,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("outdated_since", {
         header: "Outdated Since",
+        size: 100,
         cell: (info) => (
           <span className="text-sm text-gray-600">
             {formatDate(info.getValue())}
@@ -354,6 +387,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("approval_status", {
         header: "Approval",
+        size: 90,
         cell: (info) => {
           const status = info.getValue();
           if (status === "none") return <span className="text-gray-400">—</span>;
@@ -362,6 +396,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       }),
       columnHelper.accessor("audit_status", {
         header: "Audit",
+        size: 90,
         cell: (info) => {
           const status = info.getValue();
           const label = auditStatusLabels[status];
@@ -380,10 +415,11 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       columnHelper.display({
         id: "actions",
         header: "",
+        size: 150,
         cell: (info) => {
           const row = info.row.original;
           return (
-            <div className="flex gap-2">
+            <div className="flex gap-2 whitespace-nowrap">
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -605,6 +641,13 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
         )}
         <div className="ml-auto flex gap-2">
           <button
+            onClick={handleRecalcAll}
+            disabled={recalcLoading}
+            className="rounded-md bg-gray-600 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          >
+            {recalcLoading ? "Calculating..." : "Recalc Scores"}
+          </button>
+          <button
             onClick={handleBulkAudit}
             disabled={bulkAuditLoading || localIntegrations.length === 0}
             className="rounded-md bg-purple-600 px-3 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
@@ -621,17 +664,30 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <table className="w-full table-fixed">
+          <colgroup>
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "16%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "27%" }} />
+          </colgroup>
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-gray-200">
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 ${header.column.id === "missing_features" ? "max-w-[200px]" : ""}`}
                     onClick={header.column.getToggleSortingHandler()}
-                    style={{ cursor: header.column.getCanSort() ? "pointer" : "default" }}
+                    style={{
+                      cursor: header.column.getCanSort() ? "pointer" : "default",
+                    }}
                   >
                     <div className="flex items-center gap-1">
                       {header.isPlaceholder
@@ -665,7 +721,10 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
                     className="border-b border-gray-100 transition-colors hover:bg-gray-50"
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3">
+                      <td
+                        key={cell.id}
+                        className={`px-4 py-3 ${cell.column.id === "missing_features" ? "max-w-[200px] overflow-hidden" : ""}`}
+                      >
                         {flexRender(
                           cell.column.columnDef.cell,
                           cell.getContext(),

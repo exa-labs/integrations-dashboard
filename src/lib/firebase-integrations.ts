@@ -4,6 +4,7 @@ import type {
   Integration,
   IntegrationHealth,
   IntegrationType,
+  BaselineType,
   IntegrationUpdateContext,
   AuditStatus,
   AuditHistoryEntry,
@@ -21,6 +22,23 @@ const INTEGRATIONS = "integrations";
 const SCOUT_REPOS = "scout_repos";
 const ACTIVITY_LOG = "activity_log";
 
+// ─── Baseline Inference ──────────────────────────────────────────
+
+function inferBaselineType(type: string, notes: string): BaselineType {
+  const upper = notes.toUpperCase();
+  if (upper.includes("BASELINE: FIRST-PARTY")) return "first_party";
+  if (upper.includes("BASELINE: MCP")) return "mcp";
+  if (upper.includes("BASELINE: PYTHON SDK")) return "python_sdk";
+  if (upper.includes("BASELINE: TYPESCRIPT SDK")) return "typescript_sdk";
+  if (upper.includes("BASELINE: API-DIRECT")) return "api_direct";
+  if (upper.includes("BASELINE: DOCS")) return "docs";
+  if (upper.includes("BASELINE: WEBSETS")) return "websets_api";
+  if (upper.includes("BASELINE: N/A")) return "na";
+  if (type === "python") return "python_sdk";
+  if (type === "typescript") return "typescript_sdk";
+  return "api_direct";
+}
+
 // ─── Converters ──────────────────────────────────────────────────
 
 function docToIntegration(
@@ -32,6 +50,7 @@ function docToIntegration(
     name: d.name,
     slug: d.slug,
     type: d.type ?? "other",
+    baseline_type: d.baseline_type ?? inferBaselineType(d.type ?? "other", d.update_context?.notes ?? ""),
     repo: d.repo ?? "",
     health: d.health ?? "needs_audit",
     current_sdk_version: d.current_sdk_version ?? null,
@@ -229,6 +248,7 @@ export async function addIntegration(data: {
   name: string;
   slug: string;
   type: IntegrationType;
+  baseline_type?: BaselineType;
   repo: string;
   update_context: IntegrationUpdateContext;
 }): Promise<boolean> {
@@ -245,6 +265,7 @@ export async function addIntegration(data: {
 
     tx.set(ref, {
       ...data,
+      baseline_type: data.baseline_type ?? inferBaselineType(data.type, data.update_context.notes),
       health: "needs_audit" as IntegrationHealth,
       current_sdk_version: null,
       latest_sdk_version: null,
@@ -272,7 +293,7 @@ export async function addIntegration(data: {
 export async function updateIntegrationContext(
   id: string,
   context: IntegrationUpdateContext,
-  extra?: { name?: string; type?: IntegrationType; repo?: string },
+  extra?: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType },
 ): Promise<boolean> {
   const db = getFirestore();
   if (!db) return false;
@@ -281,6 +302,7 @@ export async function updateIntegrationContext(
   if (extra?.name !== undefined) update.name = extra.name;
   if (extra?.type !== undefined) update.type = extra.type;
   if (extra?.repo !== undefined) update.repo = extra.repo;
+  if (extra?.baseline_type !== undefined) update.baseline_type = extra.baseline_type;
 
   await db.collection(INTEGRATIONS).doc(id).update(update);
   return true;
@@ -317,6 +339,14 @@ export async function updateIntegrationBenchmark(
       last_benchmarked: admin.firestore.FieldValue.serverTimestamp(),
     },
   });
+  return true;
+}
+
+export async function clearIntegrationBenchmark(id: string): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+
+  await db.collection(INTEGRATIONS).doc(id).update({ benchmark: null });
   return true;
 }
 

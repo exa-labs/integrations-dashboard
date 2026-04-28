@@ -269,16 +269,120 @@ export async function completeAudit(
 
 // ─── Audit Prompt Builder ────────────────────────────────────────
 
+function buildTaskSteps(integration: Integration): string[] {
+  const baseline = integration.baseline_type;
+
+  if (baseline === "first_party") {
+    return [
+      "1. This is a FIRST-PARTY Exa product. Do NOT audit it against another SDK.",
+      "2. Clone the repository and verify it builds and tests pass.",
+      "3. Check if there are any open issues or recent regressions.",
+      "4. Report health as 'healthy' unless build/tests are broken.",
+    ];
+  }
+
+  if (baseline === "na") {
+    return [
+      "1. This integration is a payment/access method — not a code integration.",
+      "2. Verify the integration still references valid Exa endpoints or documentation.",
+      "3. Report health as 'healthy' if the reference is still correct.",
+    ];
+  }
+
+  if (baseline === "python_sdk") {
+    return [
+      "1. Clone the repository and check the current state of the integration.",
+      "2. Check which version of exa-py (Python SDK) is being used.",
+      "3. Compare against the latest exa-py version on PyPI.",
+      "4. Verify the declared capabilities by reading the integration code.",
+      "   Check which Exa endpoints (search, search_streaming, get_contents, find_similar, answer, answer_streaming, research) are supported.",
+      "   Check which search types and content options are actually passed through.",
+      "5. If you find capabilities that are declared but NOT implemented, or capabilities",
+      "   that exist in code but are NOT declared, note them in the missing_features array.",
+      "6. Report your findings using the structured output schema.",
+    ];
+  }
+
+  if (baseline === "typescript_sdk") {
+    return [
+      "1. Clone the repository and check the current state of the integration.",
+      "2. Check which version of exa-js (TypeScript SDK) is being used.",
+      "3. Compare against the latest exa-js version on npm.",
+      "4. Verify the declared capabilities by reading the integration code.",
+      "   Check which Exa endpoints (search, search_streaming, get_contents, find_similar, answer, answer_streaming, research) are supported.",
+      "   Check which search types and content options are actually passed through.",
+      "5. If you find capabilities that are declared but NOT implemented, or capabilities",
+      "   that exist in code but are NOT declared, note them in the missing_features array.",
+      "6. Report your findings using the structured output schema.",
+    ];
+  }
+
+  if (baseline === "mcp") {
+    return [
+      "1. Clone the repository and check the current state of the integration.",
+      "2. This integration depends on exa-mcp-server. Do NOT compare against exa-py or exa-js.",
+      "3. Check which MCP tools from exa-mcp-server are used: search, get_contents, find_similar, research.",
+      "4. Check which search types (auto, fast, instant) and content options (text, highlights, summary, subpages) are exposed.",
+      "5. Verify the integration correctly passes through MCP tool parameters.",
+      "6. If you find capabilities that are declared but NOT implemented, note them in the missing_features array.",
+      "7. Report your findings using the structured output schema.",
+    ];
+  }
+
+  if (baseline === "api_direct") {
+    return [
+      "1. Clone the repository and check the current state of the integration.",
+      "2. This integration calls the Exa API directly (no SDK dependency). Do NOT compare against exa-py or exa-js versions.",
+      "3. Check which Exa API endpoints are called: /search, /contents, /findSimilar, /answer.",
+      "4. Verify the API request format matches the current Exa API specification.",
+      "5. Check which search types and content options are passed in requests.",
+      "6. If you find capabilities that are declared but NOT implemented, note them in the missing_features array.",
+      "7. Report your findings using the structured output schema.",
+    ];
+  }
+
+  if (baseline === "docs") {
+    return [
+      "1. Check the current state of this documentation/guide integration.",
+      "2. This is documentation — do NOT compare against SDK versions.",
+      "3. Verify code examples reference correct Exa API endpoints and parameters.",
+      "4. Check if the documentation mentions deprecated features or outdated API patterns.",
+      "5. Compare code examples against the current Exa API docs at docs.exa.ai.",
+      "6. Note any outdated or incorrect information in the missing_features array.",
+      "7. Report your findings using the structured output schema.",
+    ];
+  }
+
+  if (baseline === "websets_api") {
+    return [
+      "1. Clone the repository and check the current state of the integration.",
+      "2. This integration uses the Exa Websets API — NOT the search API. Do NOT compare against exa-py or exa-js.",
+      "3. Verify the Websets CRUD operations are correctly implemented.",
+      "4. Report your findings using the structured output schema.",
+    ];
+  }
+
+  return [
+    "1. Clone the repository and check the current state of the integration.",
+    "2. Verify the declared capabilities by reading the integration code.",
+    "3. Report your findings using the structured output schema.",
+  ];
+}
+
 export function buildAuditPrompt(integration: Integration): string {
   const ctx = integration.update_context;
+  const baseline = integration.baseline_type;
+  const showSdkVersion = baseline === "python_sdk" || baseline === "typescript_sdk";
+
   const lines = [
     `# Audit: ${integration.name} (${integration.slug})`,
     "",
     `**Type:** ${integration.type}`,
+    `**Baseline:** ${baseline}`,
     `**Repo:** ${integration.repo}`,
     ctx.external_repo ? `**External Repo:** ${ctx.external_repo}` : null,
-    `**Current SDK Version:** ${integration.current_sdk_version ?? "unknown"}`,
-    `**Latest SDK Version:** ${integration.latest_sdk_version ?? "unknown"}`,
+    showSdkVersion ? `**Current SDK Version:** ${integration.current_sdk_version ?? "unknown"}` : null,
+    showSdkVersion ? `**Latest SDK Version:** ${integration.latest_sdk_version ?? "unknown"}` : null,
     "",
     "## Context",
     ctx.notes || "(no notes)",
@@ -307,21 +411,13 @@ export function buildAuditPrompt(integration: Integration): string {
       : null,
     "",
     "## Task",
-    "1. Clone the repository and check the current state of the integration.",
-    "2. Check which version of the Exa SDK (exa-py or exa-js) is being used, if any.",
-    "3. Compare against the latest published SDK version on PyPI/npm.",
-    "4. Verify the declared capabilities above by reading the integration code.",
-    "   Check which Exa endpoints (search, get_contents, find_similar, answer, research) are supported.",
-    "   Check which search types and content options are actually passed through.",
-    "5. If you find capabilities that are declared but NOT actually implemented, or capabilities",
-    "   that exist in code but are NOT declared, note them in the missing_features array.",
-    "6. Report your findings using the structured output schema.",
+    ...buildTaskSteps(integration),
     "",
     "## Structured Output",
     "You MUST provide structured output with these fields:",
     "- `health`: one of 'healthy', 'outdated', 'needs_audit'",
-    "- `current_sdk_version`: the version currently used (string or null)",
-    "- `latest_sdk_version`: the latest available version (string or null)",
+    showSdkVersion ? "- `current_sdk_version`: the version currently used (string or null)" : null,
+    showSdkVersion ? "- `latest_sdk_version`: the latest available version (string or null)" : null,
     "- `missing_features`: array of missing feature/endpoint/param names",
     "- `summary`: a brief summary of the audit findings including capability coverage",
   ];
@@ -458,24 +554,92 @@ export const SCOUT_STRUCTURED_OUTPUT_SCHEMA = {
 
 // ─── Ghost-mode PR Prompt Builder ────────────────────────────────
 
+function buildGhostPrTaskSteps(integration: Integration): string[] {
+  const baseline = integration.baseline_type;
+
+  if (baseline === "python_sdk" || baseline === "typescript_sdk") {
+    const sdk = baseline === "python_sdk" ? "exa-py" : "exa-js";
+    return [
+      "1. Clone the repository using the GHOST_GITHUB_TOKEN for authentication.",
+      `2. Create a new branch with a human-style name (e.g. 'update-${sdk}-v${integration.latest_sdk_version ?? "latest"}').`,
+      `3. Update ${sdk} from ${integration.current_sdk_version ?? "current"} to ${integration.latest_sdk_version ?? "latest"}.`,
+      "4. Run the build and test commands to verify the update works.",
+      "5. Fix any breaking changes if needed.",
+      "6. Commit with a natural human-style message.",
+      "7. Push and create a PR using the GHOST_GITHUB_TOKEN.",
+      "8. Report the PR URL in structured output.",
+    ];
+  }
+
+  if (baseline === "mcp") {
+    return [
+      "1. Clone the repository using the GHOST_GITHUB_TOKEN for authentication.",
+      "2. Create a new branch with a human-style name.",
+      "3. Update the exa-mcp-server dependency or configuration to address missing features.",
+      "4. Run the build and test commands to verify the update works.",
+      "5. Commit with a natural human-style message.",
+      "6. Push and create a PR using the GHOST_GITHUB_TOKEN.",
+      "7. Report the PR URL in structured output.",
+    ];
+  }
+
+  if (baseline === "docs") {
+    return [
+      "1. Clone the repository using the GHOST_GITHUB_TOKEN for authentication.",
+      "2. Create a new branch with a human-style name.",
+      "3. Update the code examples and documentation to reflect the current Exa API.",
+      "4. Verify the examples are correct and use current parameters.",
+      "5. Commit with a natural human-style message.",
+      "6. Push and create a PR using the GHOST_GITHUB_TOKEN.",
+      "7. Report the PR URL in structured output.",
+    ];
+  }
+
+  if (baseline === "api_direct") {
+    return [
+      "1. Clone the repository using the GHOST_GITHUB_TOKEN for authentication.",
+      "2. Create a new branch with a human-style name.",
+      "3. Update the API calls to use current Exa API endpoints and parameters.",
+      "4. Run the build and test commands to verify the update works.",
+      "5. Commit with a natural human-style message.",
+      "6. Push and create a PR using the GHOST_GITHUB_TOKEN.",
+      "7. Report the PR URL in structured output.",
+    ];
+  }
+
+  return [
+    "1. Clone the repository using the GHOST_GITHUB_TOKEN for authentication.",
+    "2. Create a new branch with a human-style name.",
+    "3. Address the identified issues and missing features.",
+    "4. Run the build and test commands to verify the update works.",
+    "5. Commit with a natural human-style message.",
+    "6. Push and create a PR using the GHOST_GITHUB_TOKEN.",
+    "7. Report the PR URL in structured output.",
+  ];
+}
+
 export function buildGhostPrPrompt(integration: Integration): string {
   const ctx = integration.update_context;
+  const baseline = integration.baseline_type;
+  const showSdkVersion = baseline === "python_sdk" || baseline === "typescript_sdk";
+
   const lines = [
     `# Ghost-mode PR: Update ${integration.name} (${integration.slug})`,
     "",
     "## CRITICAL: Ghost Mode Rules",
     "You are creating a PR that MUST appear as if a human wrote it.",
     "- Do NOT mention Devin, AI, automation, bots, or any non-human involvement in commit messages, PR title, PR description, or code comments.",
-    "- Write commit messages in a natural human style (e.g. 'update exa-py to v1.2.3', 'bump SDK version').",
+    "- Write commit messages in a natural human style.",
     "- Write the PR description as a normal developer would — brief, to the point, referencing the changes.",
     "- Do NOT add any AI-generated comments, annotations, or explanations in the code.",
     "- Use the GHOST_GITHUB_TOKEN environment variable for all git operations (clone, push, PR creation).",
     "",
     `**Type:** ${integration.type}`,
+    `**Baseline:** ${baseline}`,
     `**Repo:** ${integration.repo}`,
     ctx.external_repo ? `**External Repo:** ${ctx.external_repo}` : null,
-    `**Current SDK Version:** ${integration.current_sdk_version ?? "unknown"}`,
-    `**Latest SDK Version:** ${integration.latest_sdk_version ?? "unknown"}`,
+    showSdkVersion ? `**Current SDK Version:** ${integration.current_sdk_version ?? "unknown"}` : null,
+    showSdkVersion ? `**Latest SDK Version:** ${integration.latest_sdk_version ?? "unknown"}` : null,
     "",
     "## Context",
     ctx.notes || "(no notes)",
@@ -495,14 +659,7 @@ export function buildGhostPrPrompt(integration: Integration): string {
       : null,
     "",
     "## Task",
-    "1. Clone the repository using the GHOST_GITHUB_TOKEN for authentication.",
-    "2. Create a new branch with a human-style name (e.g. 'update-exa-sdk-v1.2.3').",
-    `3. Update the Exa SDK from ${integration.current_sdk_version ?? "current"} to ${integration.latest_sdk_version ?? "latest"}.`,
-    "4. Run the build and test commands to verify the update works.",
-    "5. Fix any breaking changes if needed.",
-    "6. Commit with a natural human-style message.",
-    "7. Push and create a PR using the GHOST_GITHUB_TOKEN.",
-    "8. Report the PR URL in structured output.",
+    ...buildGhostPrTaskSteps(integration),
     "",
     "## Structured Output",
     "You MUST provide structured output with these fields:",

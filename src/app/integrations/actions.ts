@@ -19,6 +19,7 @@ import {
   fetchAuditHistory,
   fetchActivityForIntegration,
   updateIntegrationBenchmark,
+  clearIntegrationBenchmark,
 } from "@/lib/firebase-integrations";
 import { computeBenchmark } from "@/lib/api-surface";
 import {
@@ -34,6 +35,7 @@ import { getAllCronJobStates } from "@/lib/firebase-cron";
 import type {
   Integration,
   IntegrationType,
+  BaselineType,
   IntegrationUpdateContext,
   ScoutRepo,
   ActivityLogEntry,
@@ -219,9 +221,10 @@ export async function addNewIntegration(
   type: IntegrationType,
   repo: string,
   updateContext: IntegrationUpdateContext,
+  baselineType?: BaselineType,
 ): Promise<ActionResult> {
   try {
-    await addIntegration({ name, slug, type, repo, update_context: updateContext });
+    await addIntegration({ name, slug, type, baseline_type: baselineType, repo, update_context: updateContext });
 
     await addActivityLogEntry({
       actor: "dashboard-user",
@@ -232,6 +235,24 @@ export async function addNewIntegration(
       details: `Added integration: ${name}`,
       pr_url: null,
     });
+
+    if (updateContext.capabilities) {
+      try {
+        const result = computeBenchmark(type, updateContext.capabilities, false, baselineType);
+        await updateIntegrationBenchmark(slug, {
+          score: result.score,
+          endpoint_coverage: result.endpoint_coverage,
+          search_type_coverage: updateContext.capabilities.supported_search_types,
+          content_option_coverage: updateContext.capabilities.supported_content_options,
+          missing_endpoints: result.missing_endpoints,
+          missing_search_types: result.missing_search_types,
+          missing_content_options: result.missing_content_options,
+          sdk_version_match: false,
+        });
+      } catch (bmError) {
+        console.error("[Integrations] benchmark compute failed (integration was created):", bmError);
+      }
+    }
 
     return { success: true };
   } catch (error) {
@@ -247,7 +268,7 @@ export async function editIntegrationContext(
   integrationId: string,
   integrationName: string,
   context: IntegrationUpdateContext,
-  extra?: { name?: string; type?: IntegrationType; repo?: string },
+  extra?: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType },
 ): Promise<ActionResult> {
   try {
     await updateIntegrationContext(integrationId, context, extra);
@@ -261,6 +282,32 @@ export async function editIntegrationContext(
       details: "Updated integration context",
       pr_url: null,
     });
+
+    if (context.capabilities) {
+      const integration = await getIntegration(integrationId);
+      if (integration) {
+        const type = extra?.type ?? integration.type;
+        const sdkVersionMatch =
+          !!integration.current_sdk_version &&
+          !!integration.latest_sdk_version &&
+          integration.current_sdk_version === integration.latest_sdk_version;
+
+        const result = computeBenchmark(type, context.capabilities, sdkVersionMatch, extra?.baseline_type ?? integration.baseline_type);
+
+        await updateIntegrationBenchmark(integrationId, {
+          score: result.score,
+          endpoint_coverage: result.endpoint_coverage,
+          search_type_coverage: context.capabilities.supported_search_types,
+          content_option_coverage: context.capabilities.supported_content_options,
+          missing_endpoints: result.missing_endpoints,
+          missing_search_types: result.missing_search_types,
+          missing_content_options: result.missing_content_options,
+          sdk_version_match: sdkVersionMatch,
+        });
+      }
+    } else {
+      await clearIntegrationBenchmark(integrationId);
+    }
 
     return { success: true };
   } catch (error) {
@@ -320,7 +367,7 @@ export async function recalculateBenchmark(
       !!integration.latest_sdk_version &&
       integration.current_sdk_version === integration.latest_sdk_version;
 
-    const result = computeBenchmark(integration.type, caps, sdkVersionMatch);
+    const result = computeBenchmark(integration.type, caps, sdkVersionMatch, integration.baseline_type);
 
     await updateIntegrationBenchmark(integrationId, {
       score: result.score,
@@ -346,6 +393,59 @@ export async function recalculateBenchmark(
     return { success: true };
   } catch (error) {
     console.error("[Integrations] recalculateBenchmark failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function recalculateAllBenchmarks(): Promise<ActionResult & { updated?: number; skipped?: number }> {
+  try {
+    const integrations = await fetchIntegrations();
+    let updated = 0;
+    let skipped = 0;
+
+    for (const integration of integrations) {
+      const caps = integration.update_context.capabilities;
+      if (!caps) {
+        skipped++;
+        continue;
+      }
+
+      const sdkVersionMatch =
+        !!integration.current_sdk_version &&
+        !!integration.latest_sdk_version &&
+        integration.current_sdk_version === integration.latest_sdk_version;
+
+      const result = computeBenchmark(integration.type, caps, sdkVersionMatch, integration.baseline_type);
+
+      await updateIntegrationBenchmark(integration._id, {
+        score: result.score,
+        endpoint_coverage: result.endpoint_coverage,
+        search_type_coverage: caps.supported_search_types,
+        content_option_coverage: caps.supported_content_options,
+        missing_endpoints: result.missing_endpoints,
+        missing_search_types: result.missing_search_types,
+        missing_content_options: result.missing_content_options,
+        sdk_version_match: sdkVersionMatch,
+      });
+      updated++;
+    }
+
+    await addActivityLogEntry({
+      actor: "dashboard-user",
+      action: "note",
+      target_type: "integration",
+      target_id: "bulk",
+      target_name: "All Integrations",
+      details: `Bulk benchmark recalculation: ${updated} updated, ${skipped} skipped`,
+      pr_url: null,
+    });
+
+    return { success: true, updated, skipped };
+  } catch (error) {
+    console.error("[Integrations] recalculateAllBenchmarks failed:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -475,7 +575,8 @@ export async function triggerBulkAudit(): Promise<
   try {
     const integrations = await fetchIntegrations();
     const eligible = integrations.filter(
-      (i) => i.audit_status !== "running" && i.approval_status !== "in_progress",
+      (i) => i.audit_status !== "running" && i.approval_status !== "in_progress"
+        && i.baseline_type !== "first_party" && i.baseline_type !== "na",
     );
     const skipped = integrations.length - eligible.length;
 

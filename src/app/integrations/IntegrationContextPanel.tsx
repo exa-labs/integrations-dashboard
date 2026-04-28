@@ -84,6 +84,41 @@ export function IntegrationContextPanel({ integration }: Props) {
         </div>
       )}
 
+      {ctx.capabilities && (
+        <div className="flex flex-wrap gap-4">
+          {ctx.capabilities.supported_endpoints.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Endpoints</p>
+              <div className="flex flex-wrap gap-1">
+                {ctx.capabilities.supported_endpoints.map((ep) => (
+                  <span key={ep} className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">{ep}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {ctx.capabilities.supported_search_types.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Search Types</p>
+              <div className="flex flex-wrap gap-1">
+                {ctx.capabilities.supported_search_types.map((st) => (
+                  <span key={st} className="rounded bg-purple-50 px-1.5 py-0.5 text-xs text-purple-700">{st}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {ctx.capabilities.supported_content_options.length > 0 && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Content Options</p>
+              <div className="flex flex-wrap gap-1">
+                {ctx.capabilities.supported_content_options.map((co) => (
+                  <span key={co} className="rounded bg-green-50 px-1.5 py-0.5 text-xs text-green-700">{co}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Audit result */}
       {integration.audit_result && (() => {
         try {

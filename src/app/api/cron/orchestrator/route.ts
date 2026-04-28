@@ -542,6 +542,9 @@ function getAuditCandidates(
   const now = Date.now();
 
   const eligible = integrations.filter((i) => {
+    // Skip first-party and N/A — these are the standard, not auditable
+    if (i.baseline_type === "first_party" || i.baseline_type === "na") return false;
+
     // Skip currently running
     if (i.audit_status === "running") return false;
 
