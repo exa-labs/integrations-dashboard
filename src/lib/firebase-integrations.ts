@@ -695,11 +695,12 @@ export async function linkScoutRepoToIntegration(repoUrl: string): Promise<strin
   const db = getFirestore();
   if (!db || !repoUrl) return null;
 
-  // Extract owner/repo from the URL
+  // Extract owner/repo — handle both full URLs and short "owner/repo" format
   const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
-  if (!match) return null;
-
-  const slug = match[1].replace(/\.git$/, "").toLowerCase();
+  const slug = match
+    ? match[1].replace(/\.git$/, "").toLowerCase()
+    : repoUrl.includes("/") ? repoUrl.replace(/\.git$/, "").toLowerCase() : null;
+  if (!slug) return null;
   // Scout repo doc IDs use owner__repo format
   const docId = slug.replace("/", "__");
 

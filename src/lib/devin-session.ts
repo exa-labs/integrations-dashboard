@@ -211,11 +211,13 @@ export async function completeAudit(
       }
       // Combine missing_features + updates for the health-affecting issues
       // Suggestions are stored but don't affect health score
-      const allIssues = [
-        ...(auditResult.missing_features ?? []),
-        ...(auditResult.updates ?? []),
-      ];
-      healthUpdate.missing_features = allIssues;
+      if (auditResult.missing_features !== undefined || auditResult.updates !== undefined) {
+        const allIssues = [
+          ...(auditResult.missing_features ?? []),
+          ...(auditResult.updates ?? []),
+        ];
+        healthUpdate.missing_features = allIssues;
+      }
       if (auditResult.health === "outdated") {
         healthUpdate.outdated_since = new Date();
       }
