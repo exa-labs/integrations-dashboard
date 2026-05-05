@@ -253,26 +253,44 @@ async function processScoutJob(): Promise<ScoutTickResult> {
             summary?: string;
           } | null;
 
-          if (scoutResult?.repos) {
-            await upsertScoutRepos(scoutResult.repos);
+          let written = 0;
+          let skippedDupes = 0;
 
-            // Slack notify for strong scout finds
-            const strongRepos = (scoutResult.repos ?? []).filter(
-              (r: { exa_fit?: string }) => r.exa_fit === "strong",
+          if (scoutResult?.repos) {
+            // Capture known slugs BEFORE upsert so we can identify truly new repos for Slack
+            const preUpsertSlugs = new Set(
+              (await getKnownRepoSlugs()).map((s: string) => s.toLowerCase()),
             );
-            if (strongRepos.length > 0) {
-              await notifyStrongScoutFinds(
-                strongRepos as Array<{
-                  full_name: string;
-                  url: string;
-                  exa_fit: string;
-                  current_search_tool: string | null;
-                  readme_summary: string;
-                }>,
-                scoutResult.summary ?? "",
-              ).catch((e) =>
-                console.error("[Orchestrator] Slack scout notify error:", e),
+
+            const upsertResult = await upsertScoutRepos(scoutResult.repos);
+            written = upsertResult.written;
+            skippedDupes = upsertResult.skippedDupes;
+            console.log(
+              `[Orchestrator] Scout upsert: ${written} new, ${skippedDupes} dupes skipped`,
+            );
+
+            // Slack notify only for strong repos that were actually new (not in pre-upsert set)
+            if (written > 0) {
+              const strongNewRepos = (scoutResult.repos ?? []).filter(
+                (r: { exa_fit?: string; full_name?: string }) =>
+                  r.exa_fit === "strong" &&
+                  r.full_name &&
+                  !preUpsertSlugs.has((r.full_name as string).toLowerCase()),
               );
+              if (strongNewRepos.length > 0) {
+                await notifyStrongScoutFinds(
+                  strongNewRepos as Array<{
+                    full_name: string;
+                    url: string;
+                    exa_fit: string;
+                    current_search_tool: string | null;
+                    readme_summary: string;
+                  }>,
+                  scoutResult.summary ?? "",
+                ).catch((e) =>
+                  console.error("[Orchestrator] Slack scout notify error:", e),
+                );
+              }
             }
           }
 
@@ -290,7 +308,7 @@ async function processScoutJob(): Promise<ScoutTickResult> {
             target_id: null,
             target_name: "Scout Discovery",
             details: scoutResult
-              ? `Discovered ${scoutResult.repos?.length ?? 0} repos — ${scoutResult.summary ?? ""}`
+              ? `Discovered ${written} new repos (${skippedDupes} dupes skipped) — ${scoutResult.summary ?? ""}`
               : "Scout completed (no structured output)",
             pr_url: null,
           });

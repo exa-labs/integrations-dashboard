@@ -25,6 +25,14 @@ export type OutreachStatus =
   | "integrated";
 export type AuditStatus = "none" | "running" | "completed" | "failed";
 
+export type IntegrationCategory =
+  | "sdk"
+  | "framework"
+  | "platform"
+  | "app"
+  | "template"
+  | "other";
+
 export type ActivityAction =
   | "mark_outdated"
   | "mark_fixed"
@@ -137,6 +145,7 @@ export interface Integration {
   slug: string;
   type: IntegrationType;
   baseline_type: BaselineType;
+  category: IntegrationCategory;
   repo: string;
   health: IntegrationHealth;
   current_sdk_version: string | null;

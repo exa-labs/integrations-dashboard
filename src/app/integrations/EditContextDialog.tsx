@@ -14,6 +14,7 @@ import { CapabilitiesSection } from "./CapabilitiesSection";
 import type {
   Integration,
   IntegrationType,
+  IntegrationCategory,
   BaselineType,
   IntegrationUpdateContext,
   ExaEndpoint,
@@ -45,11 +46,21 @@ const BASELINE_OPTIONS: { value: BaselineType; label: string }[] = [
   { value: "na", label: "N/A" },
 ];
 
+const CATEGORY_OPTIONS: { value: IntegrationCategory; label: string }[] = [
+  { value: "sdk", label: "SDK" },
+  { value: "framework", label: "Framework" },
+  { value: "platform", label: "Platform" },
+  { value: "app", label: "App" },
+  { value: "template", label: "Template" },
+  { value: "other", label: "Other" },
+];
+
 export function EditContextDialog({ integration, onClose }: Props) {
   const ctx = integration.update_context;
   const [name, setName] = useState(integration.name);
   const [type, setType] = useState<IntegrationType>(integration.type);
   const [baselineType, setBaselineType] = useState<BaselineType>(integration.baseline_type);
+  const [category, setCategory] = useState<IntegrationCategory>(integration.category);
   const [repo, setRepo] = useState(integration.repo);
   const [notes, setNotes] = useState(ctx.notes);
   const [keyFiles, setKeyFiles] = useState(ctx.key_files.join(", "));
@@ -97,10 +108,11 @@ export function EditContextDialog({ integration, onClose }: Props) {
         : {}),
     };
 
-    const extra: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType } = {};
+    const extra: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType; category?: IntegrationCategory } = {};
     if (name !== integration.name) extra.name = name;
     if (type !== integration.type) extra.type = type;
     if (baselineType !== integration.baseline_type) extra.baseline_type = baselineType;
+    if (category !== integration.category) extra.category = category;
     if (repo !== integration.repo) extra.repo = repo;
 
     startTransition(async () => {
@@ -165,7 +177,7 @@ export function EditContextDialog({ integration, onClose }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">
               Type
@@ -192,6 +204,22 @@ export function EditContextDialog({ integration, onClose }: Props) {
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               {BASELINE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Category
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as IntegrationCategory)}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {CATEGORY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>

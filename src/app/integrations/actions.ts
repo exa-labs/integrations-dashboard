@@ -20,6 +20,7 @@ import {
   fetchActivityForIntegration,
   updateIntegrationBenchmark,
   clearIntegrationBenchmark,
+  linkScoutRepoToIntegration,
 } from "@/lib/firebase-integrations";
 import { computeBenchmark } from "@/lib/api-surface";
 import {
@@ -35,6 +36,7 @@ import { getAllCronJobStates } from "@/lib/firebase-cron";
 import type {
   Integration,
   IntegrationType,
+  IntegrationCategory,
   BaselineType,
   IntegrationUpdateContext,
   ScoutRepo,
@@ -222,9 +224,10 @@ export async function addNewIntegration(
   repo: string,
   updateContext: IntegrationUpdateContext,
   baselineType?: BaselineType,
+  category?: IntegrationCategory,
 ): Promise<ActionResult> {
   try {
-    await addIntegration({ name, slug, type, baseline_type: baselineType, repo, update_context: updateContext });
+    await addIntegration({ name, slug, type, baseline_type: baselineType, category, repo, update_context: updateContext });
 
     await addActivityLogEntry({
       actor: "dashboard-user",
@@ -254,6 +257,25 @@ export async function addNewIntegration(
       }
     }
 
+    // Auto-link matching scout repo → mark as "integrated"
+    try {
+      const linkedScoutId = await linkScoutRepoToIntegration(repo);
+      if (linkedScoutId) {
+        console.log(`[Integrations] auto-linked scout repo ${linkedScoutId} to integration ${slug}`);
+        await addActivityLogEntry({
+          actor: "dashboard-user",
+          action: "note",
+          target_type: "scout_repo",
+          target_id: linkedScoutId,
+          target_name: linkedScoutId.replace("__", "/"),
+          details: `Auto-linked to integration ${name} (${slug})`,
+          pr_url: null,
+        });
+      }
+    } catch (linkError) {
+      console.error("[Integrations] scout auto-link failed (non-blocking):", linkError);
+    }
+
     return { success: true };
   } catch (error) {
     console.error("[Integrations] addNew failed:", error);
@@ -268,7 +290,7 @@ export async function editIntegrationContext(
   integrationId: string,
   integrationName: string,
   context: IntegrationUpdateContext,
-  extra?: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType },
+  extra?: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType; category?: IntegrationCategory },
 ): Promise<ActionResult> {
   try {
     await updateIntegrationContext(integrationId, context, extra);
@@ -473,7 +495,8 @@ export async function triggerAudit(
       };
     }
 
-    const prompt = buildAuditPrompt(integration);
+    const sdkState = await getSdkState();
+    const prompt = buildAuditPrompt(integration, sdkState);
     const session = await spawnDevinSession(
       prompt,
       `Audit: ${integration.name}`,
@@ -583,9 +606,10 @@ export async function triggerBulkAudit(): Promise<
     let triggered = 0;
     const errors: string[] = [];
 
+    const sdkState = await getSdkState();
     for (const integration of eligible) {
       try {
-        const prompt = buildAuditPrompt(integration);
+        const prompt = buildAuditPrompt(integration, sdkState);
         const session = await spawnDevinSession(
           prompt,
           `Audit: ${integration.name}`,
