@@ -93,8 +93,10 @@ src/
 ### `integrations` (doc ID = slug)
 Core integration records. Each has:
 - `name`, `slug`, `type` (python/typescript/external/sheets/other)
-- `repo` (GitHub URL)
+- `repo` (GitHub owner/repo slug)
 - `health` (healthy/outdated/needs_audit)
+- `baseline_type` (first_party/mcp/python_sdk/typescript_sdk/api_direct/docs/websets_api/na)
+- `category` (sdk/framework/platform/app/template/other) — auto-inferred from baseline_type at read time if not persisted
 - `current_sdk_version`, `latest_sdk_version`, `missing_features[]`
 - `update_context` (notes, key_files[], build_cmd, test_cmd, publish_cmd)
 - `approval_status` (none/pending_approval/approved/in_progress)
@@ -102,9 +104,9 @@ Core integration records. Each has:
 - `audit_status` (none/running/completed/failed), `audit_session_id`, `audit_session_url`
 - Subcollection: `audit_history` (doc ID = session_id for idempotency)
 
-### `scout_repos` (doc ID = `owner__repo`)
+### `scout_repos` (doc ID = `owner__repo`, normalized to lowercase)
 Discovered repos from scout sessions:
-- `full_name`, `url`, `stars`, `star_velocity`
+- `full_name`, `full_name_lower` (lowercase, for case-insensitive queries), `url`, `stars`, `star_velocity`
 - `exa_fit` (strong/medium) — new field, replaces old `score`
 - `current_search_tool` — what search tool the repo currently uses
 - `integration_opportunity`, `outreach_note`
@@ -120,7 +122,7 @@ State for each cron job type — tick lock, cooldown, active session tracking, s
 
 A unified orchestrator runs every 5 minutes via Vercel Cron (`/api/cron/orchestrator`):
 
-1. **Scout job:** If no active session and cooldown passed (7 days), spawns a Devin scout session. If session running, polls it. On completion, upserts discovered repos + Slack notifies for strong fits.
+1. **Scout job:** If no active session and cooldown passed (24 hours), spawns a Devin scout session. If session running, polls it. On completion, upserts discovered repos (with server-side dedup) + Slack notifies for strong fits.
 2. **Audit job:** Polls running audit sessions (max 5/tick). It does not spawn new audits; audits are started manually from the dashboard. Slack notifies for non-healthy audit results.
 3. **Ghost PR polling:** Polls in-progress ghost PR sessions (`approval_status === "in_progress"`). On completion, extracts PR URL and marks integration healthy.
 
@@ -138,8 +140,12 @@ All data mutations go through server actions. The UI calls these directly — no
 2. `pollDevinSession()` checks status. Terminal states: stopped, finished, blocked-with-output, failed
 3. `completeAudit()` processes results: updates health, writes audit history, logs activity. Idempotent via session_id doc IDs.
 
-### Dynamic Skip List (Scout)
-Before spawning a scout session, `getKnownRepoSlugs()` fetches all integration repo URLs + existing scout_repos slugs. These are injected into the prompt so Devin doesn't waste time on already-known repos.
+### Scout Deduplication
+**Prompt-level:** Before spawning a scout session, `getKnownRepoSlugs()` fetches all integration repo URLs + existing scout_repos slugs. These are injected into the prompt so Devin doesn't waste time on already-known repos.
+**Server-side:** `upsertScoutRepos()` accepts `{ skipExisting?: boolean }` (default `true`). When `true` (used by orchestrator for new discoveries), repos whose `full_name` already exists in Firestore or matches an integration repo are silently dropped. When `false` (used by sync API), all repos are written with merge semantics to update mutable fields (stars, velocity, etc.).
+
+### Scout → Integration Auto-Linking
+When adding an integration via `addNewIntegration()`, `linkScoutRepoToIntegration()` checks for a matching scout repo (by lowercase doc ID, falling back to `full_name_lower` query) and auto-marks it as `outreach_status: "integrated"`.
 
 ### Bulk Audit
 `triggerBulkAudit()` server action spawns Devin audit sessions for all integrations not currently running. The "Audit All" button in ManagerTab confirms with the user, then fires all audits in sequence.
@@ -178,7 +184,7 @@ npm run lint     # ESLint
 - Use `"use server"` for server action files
 - Use `"use client"` for interactive components
 - Firestore timestamps: always use `.toDate?.()` with `?? null` fallback in converters
-- Document IDs: slugs for integrations, `owner__repo` for scout repos, job type for cron
+- Document IDs: slugs for integrations, `owner__repo` (lowercase) for scout repos, job type for cron
 - Activity logging: every mutation should also write to activity_log
 - Badge variants match health/status values (healthy, outdated, needs_audit, etc.)
 - No external CSS — all styling via Tailwind classes
@@ -193,7 +199,10 @@ npm run lint     # ESLint
 - [x] Live summary cards (computed from local state)
 - [x] Integration detail page with tabs (Overview, Audits, Activity)
 - [x] Scout discovery (rewired to find repos WITHOUT Exa)
-- [x] Dynamic skip list for scout deduplication
+- [x] Scout deduplication (prompt-level skip list + server-side filtering)
+- [x] Integration categorization (sdk/framework/platform/app/template/other) with filter pills
+- [x] Context-aware audit prompts (injects real SDK versions, splits missing_features/updates/suggestions)
+- [x] Scout → integration auto-linking (marks scout repos as "integrated" when added)
 - [x] Unified cron orchestrator (5-min tick)
 - [x] SDK version check cron (MWF)
 - [x] Activity log timeline

@@ -574,48 +574,60 @@ export async function getScoutSummary(): Promise<ScoutSummary> {
 }
 
 /**
- * Upsert scout repos with server-side dedup.
- * Skips repos whose full_name (normalized to lowercase) already exists in
- * scout_repos OR matches an integration repo URL. Returns the count of
- * *newly written* repos (duplicates are silently dropped).
+ * Upsert scout repos with optional server-side dedup.
+ * When `skipExisting` is true (default), skips repos whose full_name already
+ * exists in scout_repos or matches an integration repo URL — used by the
+ * orchestrator which only sends new discoveries.
+ * When `skipExisting` is false, all repos are written with merge semantics,
+ * allowing the sync API to update mutable fields (stars, velocity, etc.).
+ * Doc IDs are normalized to lowercase for consistent lookups.
  */
 export async function upsertScoutRepos(
   repos: Array<Record<string, unknown>>,
+  options?: { skipExisting?: boolean },
 ): Promise<{ written: number; skippedDupes: number }> {
   const db = getFirestore();
   if (!db) return { written: 0, skippedDupes: 0 };
 
-  // Build a set of already-known slugs for server-side dedup
-  const knownSlugs = new Set(
-    (await getKnownRepoSlugs()).map((s) => s.toLowerCase()),
-  );
+  const skipExisting = options?.skipExisting ?? true;
+  let reposToWrite = repos;
+  let skippedDupes = 0;
 
-  // Filter out repos that are already known
-  const newRepos = repos.filter((repo) => {
-    const fullName = (repo.full_name as string | undefined) ?? "";
-    return fullName && !knownSlugs.has(fullName.toLowerCase());
-  });
+  if (skipExisting) {
+    // Build a set of already-known slugs for server-side dedup
+    const knownSlugs = new Set(
+      (await getKnownRepoSlugs()).map((s) => s.toLowerCase()),
+    );
 
-  const skippedDupes = repos.length - newRepos.length;
+    // Filter out repos that are already known
+    reposToWrite = repos.filter((repo) => {
+      const fullName = (repo.full_name as string | undefined) ?? "";
+      return fullName && !knownSlugs.has(fullName.toLowerCase());
+    });
 
-  if (newRepos.length === 0) {
+    skippedDupes = repos.length - reposToWrite.length;
+  }
+
+  if (reposToWrite.length === 0) {
     return { written: 0, skippedDupes };
   }
 
   const BATCH_LIMIT = 500;
   let written = 0;
 
-  for (let i = 0; i < newRepos.length; i += BATCH_LIMIT) {
-    const chunk = newRepos.slice(i, i + BATCH_LIMIT);
+  for (let i = 0; i < reposToWrite.length; i += BATCH_LIMIT) {
+    const chunk = reposToWrite.slice(i, i + BATCH_LIMIT);
     const batch = db.batch();
     for (const repo of chunk) {
       const fullName = repo.full_name as string;
-      const docId = fullName.replace("/", "__");
+      // Normalize doc ID to lowercase for consistent lookups
+      const docId = fullName.toLowerCase().replace("/", "__");
       const ref = db.collection(SCOUT_REPOS).doc(docId);
       batch.set(
         ref,
         {
           ...repo,
+          full_name_lower: fullName.toLowerCase(),
           discovered_at: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true },
@@ -708,10 +720,10 @@ export async function linkScoutRepoToIntegration(repoUrl: string): Promise<strin
   const doc = await ref.get();
 
   if (!doc.exists) {
-    // Try a query-based lookup in case the doc ID doesn't match exactly
+    // Try a query-based lookup using the lowercase field for case-insensitive matching
     const snap = await db
       .collection(SCOUT_REPOS)
-      .where("full_name", "==", slug)
+      .where("full_name_lower", "==", slug)
       .limit(1)
       .get();
 

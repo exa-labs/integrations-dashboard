@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.scout_repos?.length) {
-      const scoutResult = await upsertScoutRepos(body.scout_repos);
+      const scoutResult = await upsertScoutRepos(body.scout_repos, { skipExisting: false });
       results.repos_synced = scoutResult.written;
       results.repos_skipped_dupes = scoutResult.skippedDupes;
     }
