@@ -257,6 +257,11 @@ async function processScoutJob(): Promise<ScoutTickResult> {
           let skippedDupes = 0;
 
           if (scoutResult?.repos) {
+            // Capture known slugs BEFORE upsert so we can identify truly new repos for Slack
+            const preUpsertSlugs = new Set(
+              (await getKnownRepoSlugs()).map((s: string) => s.toLowerCase()),
+            );
+
             const upsertResult = await upsertScoutRepos(scoutResult.repos);
             written = upsertResult.written;
             skippedDupes = upsertResult.skippedDupes;
@@ -264,18 +269,13 @@ async function processScoutJob(): Promise<ScoutTickResult> {
               `[Orchestrator] Scout upsert: ${written} new, ${skippedDupes} dupes skipped`,
             );
 
-            // Slack notify only for strong repos that were actually written (not dupes)
+            // Slack notify only for strong repos that were actually new (not in pre-upsert set)
             if (written > 0) {
-              const knownSlugsSet = new Set(
-                (await getKnownRepoSlugs()).map((s: string) => s.toLowerCase()),
-              );
-              // Filter to repos that are new (not in the pre-existing known set)
-              // AND have strong exa_fit
               const strongNewRepos = (scoutResult.repos ?? []).filter(
                 (r: { exa_fit?: string; full_name?: string }) =>
                   r.exa_fit === "strong" &&
                   r.full_name &&
-                  !knownSlugsSet.has((r.full_name as string).toLowerCase()),
+                  !preUpsertSlugs.has((r.full_name as string).toLowerCase()),
               );
               if (strongNewRepos.length > 0) {
                 await notifyStrongScoutFinds(

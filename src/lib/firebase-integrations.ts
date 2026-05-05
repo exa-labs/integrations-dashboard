@@ -612,7 +612,7 @@ export async function upsertScoutRepos(
     return { written: 0, skippedDupes };
   }
 
-  const BATCH_LIMIT = 500;
+  const BATCH_LIMIT = 250; // Reduced from 500 to account for delete+set pairs during case migration
   let written = 0;
 
   for (let i = 0; i < reposToWrite.length; i += BATCH_LIMIT) {
