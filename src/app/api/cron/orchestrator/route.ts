@@ -11,10 +11,8 @@ import {
   pollDevinSession,
   completeAudit,
   spawnDevinSession,
-  buildAuditPrompt,
   buildScoutPrompt,
   isSessionStuck,
-  AUDIT_STRUCTURED_OUTPUT_SCHEMA,
   SCOUT_STRUCTURED_OUTPUT_SCHEMA,
 } from "@/lib/devin-session";
 import {
@@ -35,7 +33,6 @@ import {
 // ─── Constants ───────────────────────────────────────────────────
 
 const MAX_POLLS_PER_TICK = 5; // Max running sessions to poll per tick
-const MAX_SPAWNS_PER_TICK = 2; // Max new audit sessions to spawn per tick
 
 // ─── Auth ────────────────────────────────────────────────────────
 
@@ -100,7 +97,6 @@ interface AuditTickResult {
   polled: number;
   completed: number;
   failed: number;
-  spawned: number;
   stuckMarked: number;
 }
 
@@ -108,12 +104,7 @@ async function processAuditJob(): Promise<AuditTickResult> {
   // Acquire transactional lock
   const state = await acquireTickLock("audit");
   if (!state) {
-    return { skipped: "locked", polled: 0, completed: 0, failed: 0, spawned: 0, stuckMarked: 0 };
-  }
-
-  if (!state.enabled) {
-    await releaseTickLock("audit");
-    return { skipped: "disabled", polled: 0, completed: 0, failed: 0, spawned: 0, stuckMarked: 0 };
+    return { skipped: "locked", polled: 0, completed: 0, failed: 0, stuckMarked: 0 };
   }
 
   try {
@@ -122,11 +113,9 @@ async function processAuditJob(): Promise<AuditTickResult> {
       polled: 0,
       completed: 0,
       failed: 0,
-      spawned: 0,
       stuckMarked: 0,
     };
 
-    // Phase 1: Poll running sessions
     const running = integrations.filter(
       (i) => i.audit_status === "running" && i.audit_session_id,
     );
@@ -175,46 +164,6 @@ async function processAuditJob(): Promise<AuditTickResult> {
           `[Orchestrator] Error polling ${integration.name}:`,
           err,
         );
-      }
-    }
-
-    // Phase 2: Spawn new audit sessions (if cooldown passed)
-    const currentlyRunning = integrations.filter(
-      (i) => i.audit_status === "running",
-    ).length;
-
-    const canSpawn =
-      shouldSpawn(state) &&
-      currentlyRunning < state.max_concurrent_sessions;
-
-    if (canSpawn) {
-      const candidates = getAuditCandidates(integrations, state);
-      const toSpawn = candidates.slice(
-        0,
-        Math.min(
-          MAX_SPAWNS_PER_TICK,
-          state.max_concurrent_sessions - currentlyRunning,
-        ),
-      );
-
-      for (const integration of toSpawn) {
-        try {
-          await spawnAuditSession(integration);
-          result.spawned++;
-        } catch (err) {
-          console.error(
-            `[Orchestrator] Error spawning audit for ${integration.name}:`,
-            err,
-          );
-          await recordCronError(
-            "audit",
-            `Failed to spawn for ${integration.name}: ${err instanceof Error ? err.message : "Unknown"}`,
-          );
-        }
-      }
-
-      if (result.spawned > 0) {
-        await recordCronSpawn("audit", result.spawned);
       }
     }
 
@@ -524,89 +473,6 @@ function shouldSpawn(state: CronJobState): boolean {
   const cooldownMs = state.cooldown_minutes * 60 * 1000;
   const elapsed = Date.now() - new Date(state.last_spawn_at).getTime();
   return elapsed >= cooldownMs;
-}
-
-/**
- * Get integrations that need auditing, sorted by priority:
- * 1. health === "needs_audit" (never audited or explicitly marked)
- * 2. health === "outdated" (detected stale by sdk-check)
- * 3. health === "healthy" with oldest last_audit_completed_at (re-verify)
- *
- * Excludes: currently running, recently completed within cooldown
- */
-function getAuditCandidates(
-  integrations: Integration[],
-  state: CronJobState,
-): Integration[] {
-  const cooldownMs = state.cooldown_minutes * 60 * 1000;
-  const now = Date.now();
-
-  const eligible = integrations.filter((i) => {
-    // Skip first-party and N/A — these are the standard, not auditable
-    if (i.baseline_type === "first_party" || i.baseline_type === "na") return false;
-
-    // Skip currently running
-    if (i.audit_status === "running") return false;
-
-    // Skip integrations with in-progress ghost PRs (avoid state conflicts)
-    if (i.approval_status === "in_progress") return false;
-
-    // Skip recently audited (within cooldown)
-    if (i.last_audit_completed_at) {
-      const completedAt = new Date(i.last_audit_completed_at).getTime();
-      if (now - completedAt < cooldownMs) return false;
-    }
-
-    return true;
-  });
-
-  // Sort by priority
-  return eligible.sort((a, b) => {
-    const priorityOrder: Record<string, number> = {
-      needs_audit: 0,
-      outdated: 1,
-      healthy: 2,
-    };
-
-    const aPriority = priorityOrder[a.health] ?? 2;
-    const bPriority = priorityOrder[b.health] ?? 2;
-
-    if (aPriority !== bPriority) return aPriority - bPriority;
-
-    // Within same priority: oldest audit first (nulls = never audited = highest)
-    const aTime = a.last_audit_completed_at
-      ? new Date(a.last_audit_completed_at).getTime()
-      : 0;
-    const bTime = b.last_audit_completed_at
-      ? new Date(b.last_audit_completed_at).getTime()
-      : 0;
-
-    return aTime - bTime;
-  });
-}
-
-async function spawnAuditSession(integration: Integration): Promise<void> {
-  const prompt = buildAuditPrompt(integration);
-  const session = await spawnDevinSession(
-    prompt,
-    `Audit: ${integration.name}`,
-    AUDIT_STRUCTURED_OUTPUT_SCHEMA,
-  );
-
-  await updateIntegrationAuditStatus(integration._id, "running", {
-    session_id: session.session_id,
-    session_url: session.url,
-  });
-
-  await addActivityLogEntry({
-    actor: "cron/orchestrator",
-    action: "audit_triggered",
-    target_type: "integration",
-    target_id: integration._id,
-    target_name: integration.name,
-    details: `Cron-scheduled audit started: ${session.url}`,
-    pr_url: null,
-  });
 }
 
 async function handleStuckSession(integration: Integration): Promise<void> {

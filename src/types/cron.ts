@@ -33,7 +33,7 @@ export const CRON_JOB_DEFAULTS: Record<CronJobType, Omit<CronJobState, "_id">> =
   {
     audit: {
       type: "audit",
-      enabled: true,
+      enabled: false,
       last_tick_at: null,
       tick_lock_until: null,
       cooldown_minutes: 1440, // 24 hours between audit rounds
