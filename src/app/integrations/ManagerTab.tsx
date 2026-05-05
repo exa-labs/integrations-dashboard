@@ -23,6 +23,7 @@ import { triggerAudit, triggerBulkAudit, triggerGhostPr, checkAuditStatus, getIn
 import type {
   Integration,
   IntegrationHealth,
+  IntegrationCategory,
   AuditStatus,
   SdkState,
 } from "@/types/integrations";
@@ -61,6 +62,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
   const [healthFilter, setHealthFilter] = useState<IntegrationHealth | "all">(
     "all",
   );
+  const [categoryFilter, setCategoryFilter] = useState<IntegrationCategory | "all">("all");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [markFixedTarget, setMarkFixedTarget] = useState<Integration | null>(
     null,
@@ -255,9 +257,24 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
   }, [pollLoading]);
 
   const filteredData = useMemo(() => {
-    if (healthFilter === "all") return localIntegrations;
-    return localIntegrations.filter((i) => i.health === healthFilter);
-  }, [localIntegrations, healthFilter]);
+    let data = localIntegrations;
+    if (healthFilter !== "all") {
+      data = data.filter((i) => i.health === healthFilter);
+    }
+    if (categoryFilter !== "all") {
+      data = data.filter((i) => i.category === categoryFilter);
+    }
+    return data;
+  }, [localIntegrations, healthFilter, categoryFilter]);
+
+  const categoryLabels: Record<IntegrationCategory, string> = {
+    sdk: "SDKs",
+    framework: "Frameworks",
+    platform: "Platforms",
+    app: "Apps",
+    template: "Templates",
+    other: "Other",
+  };
 
   const columns = useMemo(
     () => [
@@ -609,47 +626,65 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
         </div>
       )}
 
-      {/* Filter + Add */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-500">Filter:</span>
-        {(["all", "outdated", "needs_audit", "healthy"] as const).map(
-          (filter) => (
+      {/* Filters + Add */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-gray-500">Health:</span>
+          {(["all", "outdated", "needs_audit", "healthy"] as const).map(
+            (filter) => (
+              <button
+                key={filter}
+                onClick={() => setHealthFilter(filter)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  healthFilter === filter
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {filter === "all"
+                  ? "All"
+                  : healthLabels[filter as IntegrationHealth]}
+              </button>
+            ),
+          )}
+          <span className="ml-4 text-sm text-gray-500">Category:</span>
+          {(["all", "sdk", "framework", "platform", "app", "template", "other"] as const).map(
+            (filter) => (
+              <button
+                key={filter}
+                onClick={() => setCategoryFilter(filter)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  categoryFilter === filter
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {filter === "all" ? "All" : categoryLabels[filter as IntegrationCategory]}
+              </button>
+            ),
+          )}
+          <div className="ml-auto flex gap-2">
             <button
-              key={filter}
-              onClick={() => setHealthFilter(filter)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                healthFilter === filter
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
+              onClick={handleRecalcAll}
+              disabled={recalcLoading}
+              className="rounded-md bg-gray-600 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
             >
-              {filter === "all"
-                ? "All"
-                : healthLabels[filter as IntegrationHealth]}
+              {recalcLoading ? "Calculating..." : "Recalc Scores"}
             </button>
-          ),
-        )}
-        <div className="ml-auto flex gap-2">
-          <button
-            onClick={handleRecalcAll}
-            disabled={recalcLoading}
-            className="rounded-md bg-gray-600 px-3 py-1 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-          >
-            {recalcLoading ? "Calculating..." : "Recalc Scores"}
-          </button>
-          <button
-            onClick={handleBulkAudit}
-            disabled={bulkAuditLoading || localIntegrations.length === 0}
-            className="rounded-md bg-purple-600 px-3 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-          >
-            {bulkAuditLoading ? "Auditing..." : "Audit All"}
-          </button>
-          <button
-            onClick={() => setShowAddDialog(true)}
-            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
-          >
-            + Add Integration
-          </button>
+            <button
+              onClick={handleBulkAudit}
+              disabled={bulkAuditLoading || localIntegrations.length === 0}
+              className="rounded-md bg-purple-600 px-3 py-1 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            >
+              {bulkAuditLoading ? "Auditing..." : "Audit All"}
+            </button>
+            <button
+              onClick={() => setShowAddDialog(true)}
+              className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              + Add Integration
+            </button>
+          </div>
         </div>
       </div>
 

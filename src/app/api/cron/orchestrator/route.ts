@@ -254,7 +254,10 @@ async function processScoutJob(): Promise<ScoutTickResult> {
           } | null;
 
           if (scoutResult?.repos) {
-            await upsertScoutRepos(scoutResult.repos);
+            const { written, skippedDupes } = await upsertScoutRepos(scoutResult.repos);
+            console.log(
+              `[Orchestrator] Scout upsert: ${written} new, ${skippedDupes} dupes skipped`,
+            );
 
             // Slack notify for strong scout finds
             const strongRepos = (scoutResult.repos ?? []).filter(

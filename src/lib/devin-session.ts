@@ -8,6 +8,7 @@ import type {
   Integration,
   IntegrationHealth,
   AuditTriggerSource,
+  SdkState,
 } from "@/types/integrations";
 
 // ─── Devin API Types ─────────────────────────────────────────────
@@ -34,6 +35,8 @@ export interface AuditResult {
   current_sdk_version?: string | null;
   latest_sdk_version?: string | null;
   missing_features?: string[];
+  updates?: string[];
+  suggestions?: string[];
   summary: string;
 }
 
@@ -206,9 +209,13 @@ export async function completeAudit(
       if (auditResult.latest_sdk_version !== undefined) {
         healthUpdate.latest_sdk_version = auditResult.latest_sdk_version;
       }
-      if (auditResult.missing_features !== undefined) {
-        healthUpdate.missing_features = auditResult.missing_features;
-      }
+      // Combine missing_features + updates for the health-affecting issues
+      // Suggestions are stored but don't affect health score
+      const allIssues = [
+        ...(auditResult.missing_features ?? []),
+        ...(auditResult.updates ?? []),
+      ];
+      healthUpdate.missing_features = allIssues;
       if (auditResult.health === "outdated") {
         healthUpdate.outdated_since = new Date();
       }
@@ -369,10 +376,15 @@ function buildTaskSteps(integration: Integration): string[] {
   ];
 }
 
-export function buildAuditPrompt(integration: Integration): string {
+export function buildAuditPrompt(integration: Integration, sdkState?: SdkState | null): string {
   const ctx = integration.update_context;
   const baseline = integration.baseline_type;
   const showSdkVersion = baseline === "python_sdk" || baseline === "typescript_sdk";
+
+  // Inject real SDK versions from sdk_state when available
+  const latestSdkVersion = showSdkVersion && sdkState
+    ? (baseline === "python_sdk" ? sdkState.exa_py_version : sdkState.exa_js_version)
+    : integration.latest_sdk_version;
 
   const lines = [
     `# Audit: ${integration.name} (${integration.slug})`,
@@ -382,7 +394,7 @@ export function buildAuditPrompt(integration: Integration): string {
     `**Repo:** ${integration.repo}`,
     ctx.external_repo ? `**External Repo:** ${ctx.external_repo}` : null,
     showSdkVersion ? `**Current SDK Version:** ${integration.current_sdk_version ?? "unknown"}` : null,
-    showSdkVersion ? `**Latest SDK Version:** ${integration.latest_sdk_version ?? "unknown"}` : null,
+    showSdkVersion ? `**Latest SDK Version:** ${latestSdkVersion ?? "unknown"}` : null,
     "",
     "## Context",
     ctx.notes || "(no notes)",
@@ -397,17 +409,20 @@ export function buildAuditPrompt(integration: Integration): string {
     ctx.test_cmd ? `- **Test:** \`${ctx.test_cmd}\`` : null,
     ctx.publish_cmd ? `- **Publish:** \`${ctx.publish_cmd}\`` : null,
     "",
-    integration.missing_features.length > 0
-      ? `## Missing Features\n${integration.missing_features.map((f) => `- ${f}`).join("\n")}`
-      : null,
-    "",
     ctx.capabilities
       ? [
-          "## Declared Capabilities",
+          "## Declared Capabilities (already implemented)",
           `- **Endpoints:** ${ctx.capabilities.supported_endpoints.join(", ") || "(none)"}`,
           `- **Search Types:** ${ctx.capabilities.supported_search_types.join(", ") || "(none)"}`,
           `- **Content Options:** ${ctx.capabilities.supported_content_options.join(", ") || "(none)"}`,
+          "",
+          "These capabilities are already known to work. Focus on verifying they still work",
+          "and finding gaps NOT already listed here.",
         ].join("\n")
+      : null,
+    "",
+    integration.missing_features.length > 0
+      ? `## Previously Identified Issues\n${integration.missing_features.map((f) => `- ${f}`).join("\n")}\n\nCheck if these are still relevant. If fixed, do NOT include them in updates.`
       : null,
     "",
     "## Task",
@@ -418,7 +433,9 @@ export function buildAuditPrompt(integration: Integration): string {
     "- `health`: one of 'healthy', 'outdated', 'needs_audit'",
     showSdkVersion ? "- `current_sdk_version`: the version currently used (string or null)" : null,
     showSdkVersion ? "- `latest_sdk_version`: the latest available version (string or null)" : null,
-    "- `missing_features`: array of missing feature/endpoint/param names",
+    "- `missing_features`: array of confirmed issues with existing features (e.g. outdated SDK, broken endpoints)",
+    "- `updates`: array of improvements needed for EXISTING features (things already partially implemented)",
+    "- `suggestions`: array of NEW features/endpoints that could be added but don't exist yet (these are nice-to-haves, not bugs)",
     "- `summary`: a brief summary of the audit findings including capability coverage",
   ];
   return lines.filter((l) => l !== null).join("\n");
@@ -436,6 +453,17 @@ export const AUDIT_STRUCTURED_OUTPUT_SCHEMA = {
     missing_features: {
       type: "array",
       items: { type: "string" },
+      description: "Confirmed issues with existing features (outdated SDK, broken endpoints, etc.)",
+    },
+    updates: {
+      type: "array",
+      items: { type: "string" },
+      description: "Improvements needed for existing partially-implemented features",
+    },
+    suggestions: {
+      type: "array",
+      items: { type: "string" },
+      description: "New features/endpoints that could be added (nice-to-haves, not bugs)",
     },
     summary: { type: "string" },
   },

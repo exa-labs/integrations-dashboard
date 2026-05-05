@@ -4,6 +4,7 @@ import type {
   Integration,
   IntegrationHealth,
   IntegrationType,
+  IntegrationCategory,
   BaselineType,
   IntegrationUpdateContext,
   AuditStatus,
@@ -23,6 +24,16 @@ const SCOUT_REPOS = "scout_repos";
 const ACTIVITY_LOG = "activity_log";
 
 // ─── Baseline Inference ──────────────────────────────────────────
+
+function inferCategory(baseline: BaselineType): IntegrationCategory {
+  if (baseline === "python_sdk" || baseline === "typescript_sdk") return "sdk";
+  if (baseline === "mcp") return "platform";
+  if (baseline === "api_direct") return "app";
+  if (baseline === "docs") return "template";
+  if (baseline === "first_party") return "sdk";
+  if (baseline === "websets_api") return "app";
+  return "other";
+}
 
 function inferBaselineType(type: string, notes: string): BaselineType {
   const upper = notes.toUpperCase();
@@ -51,6 +62,7 @@ function docToIntegration(
     slug: d.slug,
     type: d.type ?? "other",
     baseline_type: d.baseline_type ?? inferBaselineType(d.type ?? "other", d.update_context?.notes ?? ""),
+    category: d.category ?? inferCategory(d.baseline_type ?? inferBaselineType(d.type ?? "other", d.update_context?.notes ?? "")),
     repo: d.repo ?? "",
     health: d.health ?? "needs_audit",
     current_sdk_version: d.current_sdk_version ?? null,
@@ -249,6 +261,7 @@ export async function addIntegration(data: {
   slug: string;
   type: IntegrationType;
   baseline_type?: BaselineType;
+  category?: IntegrationCategory;
   repo: string;
   update_context: IntegrationUpdateContext;
 }): Promise<boolean> {
@@ -256,6 +269,7 @@ export async function addIntegration(data: {
   if (!db) return false;
 
   const ref = db.collection(INTEGRATIONS).doc(data.slug);
+  const resolvedBaseline = data.baseline_type ?? inferBaselineType(data.type, data.update_context.notes);
 
   await db.runTransaction(async (tx) => {
     const existing = await tx.get(ref);
@@ -265,7 +279,8 @@ export async function addIntegration(data: {
 
     tx.set(ref, {
       ...data,
-      baseline_type: data.baseline_type ?? inferBaselineType(data.type, data.update_context.notes),
+      baseline_type: resolvedBaseline,
+      category: data.category ?? inferCategory(resolvedBaseline),
       health: "needs_audit" as IntegrationHealth,
       current_sdk_version: null,
       latest_sdk_version: null,
@@ -293,7 +308,7 @@ export async function addIntegration(data: {
 export async function updateIntegrationContext(
   id: string,
   context: IntegrationUpdateContext,
-  extra?: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType },
+  extra?: { name?: string; type?: IntegrationType; repo?: string; baseline_type?: BaselineType; category?: IntegrationCategory },
 ): Promise<boolean> {
   const db = getFirestore();
   if (!db) return false;
@@ -303,6 +318,7 @@ export async function updateIntegrationContext(
   if (extra?.type !== undefined) update.type = extra.type;
   if (extra?.repo !== undefined) update.repo = extra.repo;
   if (extra?.baseline_type !== undefined) update.baseline_type = extra.baseline_type;
+  if (extra?.category !== undefined) update.category = extra.category;
 
   await db.collection(INTEGRATIONS).doc(id).update(update);
   return true;
@@ -557,42 +573,58 @@ export async function getScoutSummary(): Promise<ScoutSummary> {
   };
 }
 
+/**
+ * Upsert scout repos with server-side dedup.
+ * Skips repos whose full_name (normalized to lowercase) already exists in
+ * scout_repos OR matches an integration repo URL. Returns the count of
+ * *newly written* repos (duplicates are silently dropped).
+ */
 export async function upsertScoutRepos(
   repos: Array<Record<string, unknown>>,
-): Promise<number> {
+): Promise<{ written: number; skippedDupes: number }> {
   const db = getFirestore();
-  if (!db) return 0;
+  if (!db) return { written: 0, skippedDupes: 0 };
+
+  // Build a set of already-known slugs for server-side dedup
+  const knownSlugs = new Set(
+    (await getKnownRepoSlugs()).map((s) => s.toLowerCase()),
+  );
+
+  // Filter out repos that are already known
+  const newRepos = repos.filter((repo) => {
+    const fullName = (repo.full_name as string | undefined) ?? "";
+    return fullName && !knownSlugs.has(fullName.toLowerCase());
+  });
+
+  const skippedDupes = repos.length - newRepos.length;
+
+  if (newRepos.length === 0) {
+    return { written: 0, skippedDupes };
+  }
 
   const BATCH_LIMIT = 500;
   let written = 0;
 
-  for (let i = 0; i < repos.length; i += BATCH_LIMIT) {
-    const chunk = repos.slice(i, i + BATCH_LIMIT);
-
-    const refs = chunk.map((repo) => {
+  for (let i = 0; i < newRepos.length; i += BATCH_LIMIT) {
+    const chunk = newRepos.slice(i, i + BATCH_LIMIT);
+    const batch = db.batch();
+    for (const repo of chunk) {
       const fullName = repo.full_name as string;
       const docId = fullName.replace("/", "__");
-      return db.collection(SCOUT_REPOS).doc(docId);
-    });
-    const snapshots = await db.getAll(...refs);
-    const existingIds = new Set(
-      snapshots.filter((s) => s.exists).map((s) => s.id),
-    );
-
-    const batch = db.batch();
-    for (let j = 0; j < chunk.length; j++) {
-      const repo = chunk[j];
-      const ref = refs[j];
-      const data: Record<string, unknown> = { ...repo };
-      if (!existingIds.has(ref.id)) {
-        data.discovered_at = admin.firestore.FieldValue.serverTimestamp();
-      }
-      batch.set(ref, data, { merge: true });
+      const ref = db.collection(SCOUT_REPOS).doc(docId);
+      batch.set(
+        ref,
+        {
+          ...repo,
+          discovered_at: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
     }
     await batch.commit();
     written += chunk.length;
   }
-  return written;
+  return { written, skippedDupes };
 }
 
 /**
@@ -610,11 +642,11 @@ export async function getKnownRepoSlugs(): Promise<string[]> {
 
   const slugs = new Set<string>();
 
-  // Extract slugs from integration repo URLs (e.g. "https://github.com/org/repo" → "org/repo")
+  // Extract slugs from integration repo URLs, normalizing case and stripping .git
   for (const i of integrations) {
     if (i.repo) {
       const match = i.repo.match(/github\.com\/([^/]+\/[^/]+)/);
-      if (match) slugs.add(match[1]);
+      if (match) slugs.add(match[1].replace(/\.git$/, "").toLowerCase());
     }
   }
 
@@ -651,6 +683,54 @@ export async function clearScoutRepos(): Promise<number> {
   }
 
   return deleted;
+}
+
+// ─── Scout → Integration Linking ─────────────────────────────────
+
+/**
+ * When an integration is added, check if any scout repo matches the
+ * integration's repo URL. If found, mark the scout repo as "integrated".
+ */
+export async function linkScoutRepoToIntegration(repoUrl: string): Promise<string | null> {
+  const db = getFirestore();
+  if (!db || !repoUrl) return null;
+
+  // Extract owner/repo from the URL
+  const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+  if (!match) return null;
+
+  const slug = match[1].replace(/\.git$/, "").toLowerCase();
+  // Scout repo doc IDs use owner__repo format
+  const docId = slug.replace("/", "__");
+
+  const ref = db.collection(SCOUT_REPOS).doc(docId);
+  const doc = await ref.get();
+
+  if (!doc.exists) {
+    // Try a query-based lookup in case the doc ID doesn't match exactly
+    const snap = await db
+      .collection(SCOUT_REPOS)
+      .where("full_name", "==", slug)
+      .limit(1)
+      .get();
+
+    if (snap.empty) return null;
+
+    const scoutDoc = snap.docs[0];
+    await scoutDoc.ref.update({
+      outreach_status: "integrated",
+      contacted_at: admin.firestore.FieldValue.serverTimestamp(),
+      contacted_by: "auto-link",
+    });
+    return scoutDoc.id;
+  }
+
+  await ref.update({
+    outreach_status: "integrated",
+    contacted_at: admin.firestore.FieldValue.serverTimestamp(),
+    contacted_by: "auto-link",
+  });
+  return docId;
 }
 
 // ─── Ghost PR Tracking ──────────────────────────────────────────
