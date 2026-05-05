@@ -618,13 +618,24 @@ export async function upsertScoutRepos(
   for (let i = 0; i < reposToWrite.length; i += BATCH_LIMIT) {
     const chunk = reposToWrite.slice(i, i + BATCH_LIMIT);
 
-    // Check which docs already exist so we only set discovered_at for new ones
+    // Build lowercase refs for the chunk
     const refs = chunk.map((repo) => {
       const fullName = repo.full_name as string;
       const docId = fullName.toLowerCase().replace("/", "__");
       return db.collection(SCOUT_REPOS).doc(docId);
     });
-    const snapshots = await db.getAll(...refs);
+
+    // Also check for old mixed-case doc IDs that may exist from before normalization
+    const oldRefs = chunk.map((repo) => {
+      const fullName = repo.full_name as string;
+      const oldDocId = fullName.replace("/", "__");
+      return db.collection(SCOUT_REPOS).doc(oldDocId);
+    });
+
+    const [snapshots, oldSnapshots] = await Promise.all([
+      db.getAll(...refs),
+      db.getAll(...oldRefs),
+    ]);
     const existingIds = new Set(
       snapshots.filter((s) => s.exists).map((s) => s.id),
     );
@@ -633,13 +644,24 @@ export async function upsertScoutRepos(
     for (let j = 0; j < chunk.length; j++) {
       const repo = chunk[j];
       const ref = refs[j];
+      const fullName = repo.full_name as string;
+      const oldDocId = fullName.replace("/", "__");
+      const newDocId = fullName.toLowerCase().replace("/", "__");
+
+      // Migrate old mixed-case doc: copy discovered_at, then delete old doc
+      let preservedDiscoveredAt: unknown = null;
+      if (oldDocId !== newDocId && oldSnapshots[j].exists) {
+        preservedDiscoveredAt = oldSnapshots[j].data()?.discovered_at;
+        batch.delete(oldRefs[j]);
+      }
+
       const data: Record<string, unknown> = {
         ...repo,
-        full_name_lower: (repo.full_name as string).toLowerCase(),
+        full_name_lower: fullName.toLowerCase(),
       };
       // Only set discovered_at for genuinely new documents
       if (!existingIds.has(ref.id)) {
-        data.discovered_at = admin.firestore.FieldValue.serverTimestamp();
+        data.discovered_at = preservedDiscoveredAt ?? admin.firestore.FieldValue.serverTimestamp();
       }
       batch.set(ref, data, { merge: true });
     }
