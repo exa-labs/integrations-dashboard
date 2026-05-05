@@ -617,21 +617,31 @@ export async function upsertScoutRepos(
 
   for (let i = 0; i < reposToWrite.length; i += BATCH_LIMIT) {
     const chunk = reposToWrite.slice(i, i + BATCH_LIMIT);
-    const batch = db.batch();
-    for (const repo of chunk) {
+
+    // Check which docs already exist so we only set discovered_at for new ones
+    const refs = chunk.map((repo) => {
       const fullName = repo.full_name as string;
-      // Normalize doc ID to lowercase for consistent lookups
       const docId = fullName.toLowerCase().replace("/", "__");
-      const ref = db.collection(SCOUT_REPOS).doc(docId);
-      batch.set(
-        ref,
-        {
-          ...repo,
-          full_name_lower: fullName.toLowerCase(),
-          discovered_at: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+      return db.collection(SCOUT_REPOS).doc(docId);
+    });
+    const snapshots = await db.getAll(...refs);
+    const existingIds = new Set(
+      snapshots.filter((s) => s.exists).map((s) => s.id),
+    );
+
+    const batch = db.batch();
+    for (let j = 0; j < chunk.length; j++) {
+      const repo = chunk[j];
+      const ref = refs[j];
+      const data: Record<string, unknown> = {
+        ...repo,
+        full_name_lower: (repo.full_name as string).toLowerCase(),
+      };
+      // Only set discovered_at for genuinely new documents
+      if (!existingIds.has(ref.id)) {
+        data.discovered_at = admin.firestore.FieldValue.serverTimestamp();
+      }
+      batch.set(ref, data, { merge: true });
     }
     await batch.commit();
     written += chunk.length;
@@ -654,11 +664,15 @@ export async function getKnownRepoSlugs(): Promise<string[]> {
 
   const slugs = new Set<string>();
 
-  // Extract slugs from integration repo URLs, normalizing case and stripping .git
+  // Extract slugs from integration repo URLs or short "owner/repo" format
   for (const i of integrations) {
     if (i.repo) {
       const match = i.repo.match(/github\.com\/([^/]+\/[^/]+)/);
-      if (match) slugs.add(match[1].replace(/\.git$/, "").toLowerCase());
+      if (match) {
+        slugs.add(match[1].replace(/\.git$/, "").toLowerCase());
+      } else if (i.repo.includes("/")) {
+        slugs.add(i.repo.replace(/\.git$/, "").toLowerCase());
+      }
     }
   }
 
