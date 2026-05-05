@@ -262,6 +262,15 @@ export async function addNewIntegration(
       const linkedScoutId = await linkScoutRepoToIntegration(repo);
       if (linkedScoutId) {
         console.log(`[Integrations] auto-linked scout repo ${linkedScoutId} to integration ${slug}`);
+        await addActivityLogEntry({
+          actor: "dashboard-user",
+          action: "note",
+          target_type: "scout_repo",
+          target_id: linkedScoutId,
+          target_name: linkedScoutId.replace("__", "/"),
+          details: `Auto-linked to integration ${name} (${slug})`,
+          pr_url: null,
+        });
       }
     } catch (linkError) {
       console.error("[Integrations] scout auto-link failed (non-blocking):", linkError);
