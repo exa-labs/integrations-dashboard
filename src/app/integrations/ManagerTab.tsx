@@ -574,7 +574,7 @@ export function ManagerTab({ integrations, sdkState, cronStates }: Props) {
               }`}
             />
             <span className="font-medium">
-              {isCronLocked(auditCron) ? "Cron Running" : "Cron Idle"}
+              {isCronLocked(auditCron) ? "Audit Polling" : "Audit Auto-Spawn Off"}
             </span>
           </div>
           {auditCron.last_tick_at && (

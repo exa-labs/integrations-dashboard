@@ -6,7 +6,7 @@
 
 Internal dashboard for Exa (exa.ai) to monitor, audit, and manage all third-party integrations of the Exa SDK. Two main verticals:
 
-1. **Integration Manager** — Track known integrations, trigger automated audits via Devin sessions, detect SDK staleness, approve updates
+1. **Integration Manager** — Track known integrations, trigger manual audits via Devin sessions, detect SDK staleness, approve updates
 2. **Integration Scout** — Discover trending GitHub repos that do NOT use Exa but would benefit from an integration (outreach targets)
 
 **Production URL:** https://integrations-dashboard-eta.vercel.app
@@ -121,7 +121,7 @@ State for each cron job type — tick lock, cooldown, active session tracking, s
 A unified orchestrator runs every 5 minutes via Vercel Cron (`/api/cron/orchestrator`):
 
 1. **Scout job:** If no active session and cooldown passed (7 days), spawns a Devin scout session. If session running, polls it. On completion, upserts discovered repos + Slack notifies for strong fits.
-2. **Audit job:** Polls running audit sessions (max 5/tick). Spawns new audits for eligible integrations (priority: needs_audit > outdated > healthy). Max 2 spawns/tick, max 3 concurrent. Slack notifies for non-healthy audit results.
+2. **Audit job:** Polls running audit sessions (max 5/tick). It does not spawn new audits; audits are started manually from the dashboard. Slack notifies for non-healthy audit results.
 3. **Ghost PR polling:** Polls in-progress ghost PR sessions (`approval_status === "in_progress"`). On completion, extracts PR URL and marks integration healthy.
 
 Both audit and scout use transactional tick locks to prevent duplicate processing.
@@ -188,7 +188,7 @@ npm run lint     # ESLint
 
 ### Built
 - [x] Integration registry (CRUD with context)
-- [x] Automated audits via Devin sessions
+- [x] Manual audits via Devin sessions
 - [x] Auto-poll running audits (client-side 30s polling)
 - [x] Live summary cards (computed from local state)
 - [x] Integration detail page with tabs (Overview, Audits, Activity)
