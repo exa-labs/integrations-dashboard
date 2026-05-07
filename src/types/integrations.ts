@@ -48,6 +48,7 @@ export type ActivityAction =
   | "audit_completed"
   | "scout_started"
   | "scout_completed"
+  | "scout_deleted"
   | "note";
 
 export type ExaEndpoint =

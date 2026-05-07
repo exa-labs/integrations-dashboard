@@ -11,6 +11,7 @@ import {
   fetchScoutRepos,
   getScoutSummary,
   updateScoutRepoOutreach,
+  deleteScoutRepo,
   fetchActivityLog,
   addActivityLogEntry,
   getSdkState,
@@ -148,6 +149,32 @@ export async function markRepoContacted(
     return { success: true };
   } catch (error) {
     console.error("[Integrations] markContacted failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function removeScoutRepo(
+  repoId: string,
+): Promise<ActionResult> {
+  try {
+    await deleteScoutRepo(repoId);
+
+    await addActivityLogEntry({
+      actor: "dashboard-user",
+      action: "scout_deleted",
+      target_type: "scout_repo",
+      target_id: repoId,
+      target_name: repoId.replace("__", "/"),
+      details: "Scout repo removed from dashboard",
+      pr_url: null,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[Integrations] removeScoutRepo failed:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

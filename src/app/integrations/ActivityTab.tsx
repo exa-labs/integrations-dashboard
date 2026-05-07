@@ -25,6 +25,7 @@ const actionLabels: Record<ActivityAction, string> = {
   ghost_pr_completed: "ghost PR completed",
   scout_started: "started scout discovery",
   scout_completed: "scout discovery completed",
+  scout_deleted: "deleted scout repo",
   note: "added note",
 };
 
@@ -41,6 +42,7 @@ const actionDotColors: Record<ActivityAction, string> = {
   ghost_pr_completed: "bg-emerald-500",
   scout_started: "bg-teal-500",
   scout_completed: "bg-teal-500",
+  scout_deleted: "bg-red-400",
   outreach_responded: "bg-purple-500",
   status_change: "bg-gray-400",
   note: "bg-gray-400",
