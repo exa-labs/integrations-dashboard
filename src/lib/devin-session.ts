@@ -281,12 +281,22 @@ export async function completeAudit(
 function buildTaskSteps(integration: Integration): string[] {
   const baseline = integration.baseline_type;
 
+  const deprecationStep = [
+    "**DEPRECATION CHECK:** Before flagging any feature as missing, check the Exa API changelog",
+    "   at https://docs.exa.ai/docs/changelog for deprecated or sunset features.",
+    "   - Do NOT flag deprecated/sunset features as 'missing' — it is correct for integrations to omit them.",
+    "   - DO flag integrations that still USE deprecated features (e.g. sunset endpoints, removed params).",
+    "   - Note any deprecated feature usage in the missing_features array with a 'DEPRECATED:' prefix.",
+  ];
+
   if (baseline === "first_party") {
     return [
       "1. This is a FIRST-PARTY Exa product. Do NOT audit it against another SDK.",
       "2. Clone the repository and verify it builds and tests pass.",
       "3. Check if there are any open issues or recent regressions.",
-      "4. Report health as 'healthy' unless build/tests are broken.",
+      `4. ${deprecationStep[0]}`,
+      ...deprecationStep.slice(1),
+      "5. Report health as 'healthy' unless build/tests are broken.",
     ];
   }
 
@@ -306,9 +316,11 @@ function buildTaskSteps(integration: Integration): string[] {
       "4. Verify the declared capabilities by reading the integration code.",
       "   Check which Exa endpoints (search, search_streaming, get_contents, find_similar, answer, answer_streaming, research) are supported.",
       "   Check which search types and content options are actually passed through.",
-      "5. If you find capabilities that are declared but NOT implemented, or capabilities",
+      `5. ${deprecationStep[0]}`,
+      ...deprecationStep.slice(1),
+      "6. If you find capabilities that are declared but NOT implemented, or capabilities",
       "   that exist in code but are NOT declared, note them in the missing_features array.",
-      "6. Report your findings using the structured output schema.",
+      "7. Report your findings using the structured output schema.",
     ];
   }
 
@@ -320,9 +332,11 @@ function buildTaskSteps(integration: Integration): string[] {
       "4. Verify the declared capabilities by reading the integration code.",
       "   Check which Exa endpoints (search, search_streaming, get_contents, find_similar, answer, answer_streaming, research) are supported.",
       "   Check which search types and content options are actually passed through.",
-      "5. If you find capabilities that are declared but NOT implemented, or capabilities",
+      `5. ${deprecationStep[0]}`,
+      ...deprecationStep.slice(1),
+      "6. If you find capabilities that are declared but NOT implemented, or capabilities",
       "   that exist in code but are NOT declared, note them in the missing_features array.",
-      "6. Report your findings using the structured output schema.",
+      "7. Report your findings using the structured output schema.",
     ];
   }
 
@@ -333,8 +347,10 @@ function buildTaskSteps(integration: Integration): string[] {
       "3. Check which MCP tools from exa-mcp-server are used: search, get_contents, find_similar, research.",
       "4. Check which search types (auto, fast, instant) and content options (text, highlights, summary, subpages) are exposed.",
       "5. Verify the integration correctly passes through MCP tool parameters.",
-      "6. If you find capabilities that are declared but NOT implemented, note them in the missing_features array.",
-      "7. Report your findings using the structured output schema.",
+      `6. ${deprecationStep[0]}`,
+      ...deprecationStep.slice(1),
+      "7. If you find capabilities that are declared but NOT implemented, note them in the missing_features array.",
+      "8. Report your findings using the structured output schema.",
     ];
   }
 
@@ -345,8 +361,10 @@ function buildTaskSteps(integration: Integration): string[] {
       "3. Check which Exa API endpoints are called: /search, /contents, /findSimilar, /answer.",
       "4. Verify the API request format matches the current Exa API specification.",
       "5. Check which search types and content options are passed in requests.",
-      "6. If you find capabilities that are declared but NOT implemented, note them in the missing_features array.",
-      "7. Report your findings using the structured output schema.",
+      `6. ${deprecationStep[0]}`,
+      ...deprecationStep.slice(1),
+      "7. If you find capabilities that are declared but NOT implemented, note them in the missing_features array.",
+      "8. Report your findings using the structured output schema.",
     ];
   }
 
@@ -355,7 +373,9 @@ function buildTaskSteps(integration: Integration): string[] {
       "1. Check the current state of this documentation/guide integration.",
       "2. This is documentation — do NOT compare against SDK versions.",
       "3. Verify code examples reference correct Exa API endpoints and parameters.",
-      "4. Check if the documentation mentions deprecated features or outdated API patterns.",
+      `4. ${deprecationStep[0]}`,
+      ...deprecationStep.slice(1),
+      "   Also check if the documentation mentions deprecated features or outdated API patterns.",
       "5. Compare code examples against the current Exa API docs at docs.exa.ai.",
       "6. Note any outdated or incorrect information in the missing_features array.",
       "7. Report your findings using the structured output schema.",
@@ -367,7 +387,9 @@ function buildTaskSteps(integration: Integration): string[] {
       "1. Clone the repository and check the current state of the integration.",
       "2. This integration uses the Exa Websets API — NOT the search API. Do NOT compare against exa-py or exa-js.",
       "3. Verify the Websets CRUD operations are correctly implemented.",
-      "4. Report your findings using the structured output schema.",
+      `4. ${deprecationStep[0]}`,
+      ...deprecationStep.slice(1),
+      "5. Report your findings using the structured output schema.",
     ];
   }
 
