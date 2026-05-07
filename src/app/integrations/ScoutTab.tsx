@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
+import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -15,6 +15,7 @@ import { SummaryCard } from "@/components/ui/summary-card";
 import { MarkContactedDialog } from "./MarkContactedDialog";
 import { RepoDetailPanel } from "./RepoDetailPanel";
 import { formatRelativeTime } from "@/lib/utils";
+import { removeScoutRepo } from "./actions";
 import type { ScoutRepo, ExaFit, ScoutSummary } from "@/types/integrations";
 import type { CronJobState } from "@/types/cron";
 
@@ -43,11 +44,32 @@ export function ScoutTab({ repos, summary, cronStates }: Props) {
   const [fitFilter, setFitFilter] = useState<ExaFit | "all">("all");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [contactTarget, setContactTarget] = useState<ScoutRepo | null>(null);
+  const [localRepos, setLocalRepos] = useState(repos);
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalRepos(repos);
+  }, [repos]);
+
+  const handleDelete = useCallback(async (repo: ScoutRepo) => {
+    if (!confirm(`Delete "${repo.full_name}" from scout repos?`)) return;
+    setDeleteLoading(repo._id);
+    try {
+      const result = await removeScoutRepo(repo._id);
+      if (result.success) {
+        setLocalRepos((prev) => prev.filter((r) => r._id !== repo._id));
+      } else {
+        alert(result.error ?? "Failed to delete scout repo");
+      }
+    } finally {
+      setDeleteLoading(null);
+    }
+  }, []);
 
   const filteredData = useMemo(() => {
-    if (fitFilter === "all") return repos;
-    return repos.filter((r) => r.exa_fit === fitFilter);
-  }, [repos, fitFilter]);
+    if (fitFilter === "all") return localRepos;
+    return localRepos.filter((r) => r.exa_fit === fitFilter);
+  }, [localRepos, fitFilter]);
 
   const columns = useMemo(
     () => [
@@ -148,12 +170,22 @@ export function ScoutTab({ repos, summary, cronStates }: Props) {
                   Mark Contacted
                 </button>
               )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(row);
+                }}
+                disabled={deleteLoading === row._id}
+                className="text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+              >
+                {deleteLoading === row._id ? "Deleting..." : "Delete"}
+              </button>
             </div>
           );
         },
       }),
     ],
-    [expandedRow],
+    [expandedRow, handleDelete, deleteLoading],
   );
 
   const table = useReactTable({

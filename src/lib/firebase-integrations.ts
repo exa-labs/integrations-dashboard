@@ -733,6 +733,16 @@ export async function clearScoutRepos(): Promise<number> {
   return deleted;
 }
 
+/**
+ * Delete a single scout repo by doc ID.
+ */
+export async function deleteScoutRepo(repoId: string): Promise<boolean> {
+  const db = getFirestore();
+  if (!db) return false;
+  await db.collection(SCOUT_REPOS).doc(repoId).delete();
+  return true;
+}
+
 // ─── Scout → Integration Linking ─────────────────────────────────
 
 /**
