@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, Fragment } from "react";
+import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -46,6 +46,10 @@ export function ScoutTab({ repos, summary, cronStates }: Props) {
   const [contactTarget, setContactTarget] = useState<ScoutRepo | null>(null);
   const [localRepos, setLocalRepos] = useState(repos);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocalRepos(repos);
+  }, [repos]);
 
   const handleDelete = useCallback(async (repo: ScoutRepo) => {
     if (!confirm(`Delete "${repo.full_name}" from scout repos?`)) return;
